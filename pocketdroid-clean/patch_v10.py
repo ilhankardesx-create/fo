@@ -43,22 +43,25 @@ method = r'''    private void startAndroid() {
                 add(a, "-smp", "1");
                 add(a, "-m", "2048");
 
-                // UTM LineageOS ARM64 disks + UEFI.
+                // UTM LineageOS ARM64 disks + UEFI. Keep the proven v0.9
+                // disk semantics; only make the qcow2 format explicit.
                 add(a, "-drive", "if=pflash,unit=0,file=" + firmware.getAbsolutePath() + ",format=raw,readonly=on");
                 add(a, "-drive", "if=pflash,unit=1,file=" + vars.getAbsolutePath() + ",format=raw");
-                add(a, "-drive", "file=" + vda.getAbsolutePath() + ",if=none,id=vda,format=qcow2,cache=none");
-                add(a, "-drive", "file=" + vdb.getAbsolutePath() + ",if=none,id=vdb,format=qcow2,cache=none");
+                add(a, "-drive", "file=" + vda.getAbsolutePath() + ",if=none,id=vda,format=qcow2,discard=unmap,detect-zeroes=unmap");
+                add(a, "-drive", "file=" + vdb.getAbsolutePath() + ",if=none,id=vdb,format=qcow2,discard=unmap,detect-zeroes=unmap");
                 add(a, "-device", "virtio-blk-pci,drive=vda,bootindex=0");
                 add(a, "-device", "virtio-blk-pci,drive=vdb,bootindex=1");
 
-                // Guest devices.
+                // Guest devices. Preserve the hardware set used by the package.
                 add(a, "-device", "virtio-net-pci,netdev=net0");
                 add(a, "-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:5555-:5555,hostfwd=tcp:127.0.0.1:5554-:5554");
-                add(a, "-device", "virtio-rng-pci");
-                add(a, "-device", "virtio-gpu-pci");
                 add(a, "-device", "usb-ehci,id=usb-bus");
                 add(a, "-device", "usb-tablet,bus=usb-bus.0");
+                add(a, "-device", "usb-mouse,bus=usb-bus.0");
                 add(a, "-device", "usb-kbd,bus=usb-bus.0");
+                add(a, "-device", "virtio-serial");
+                add(a, "-device", "virtio-rng-pci");
+                add(a, "-device", "virtio-gpu-pci");
 
                 // PocketDroid owns the UI. Never let QEMU wait for an Android
                 // SDL surface; VNC is the only display backend we need.
@@ -86,10 +89,10 @@ method = r'''    private void startAndroid() {
                 appendLog("[→] :qemu process başlatıldı; VNC 127.0.0.1:5901 bekleniyor.");
 
                 // Do not use ActivityManager.getRunningAppProcesses() here.
-                // Modern Android can hide isolated/secondary app processes and
-                // v0.9 therefore reported a false 8-second failure even while
-                // native QEMU had already entered qemu_init(). The child process
-                // now reports its own state through this app-private file.
+                // Modern Android can hide secondary app processes and v0.9
+                // therefore reported a false 8-second failure even while QEMU
+                // had already entered native initialization. The child now
+                // reports its own lifecycle through an app-private state file.
                 boolean nativeEntered = false;
                 String lastState = "";
                 long launchTime = System.currentTimeMillis();
