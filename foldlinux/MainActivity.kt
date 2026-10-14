@@ -71,9 +71,7 @@ private fun FoldLinuxScreen(app: App) {
     val scope = rememberCoroutineScope()
     var installed by remember { mutableStateOf(isFoldLinuxInstalled(app)) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember {
-        mutableStateOf(if (installed) "Ubuntu ortamı hazır" else "Kurulum için ARM64 rootfs seç")
-    }
+    var status by remember { mutableStateOf(if (installed) "Ubuntu ortamı hazır" else "Kurulum için ARM64 rootfs seç") }
     var selectedName by remember { mutableStateOf<String?>(null) }
     var logs by remember { mutableStateOf(listOf<String>()) }
 
@@ -90,13 +88,12 @@ private fun FoldLinuxScreen(app: App) {
 
         scope.launch {
             val localArchive = copyArchiveToPrivateCache(
-                context = context,
-                uri = uri,
-                displayName = selectedName ?: "linux-rootfs.tar.gz",
-                onProgressMb = { mb ->
-                    withContext(Dispatchers.Main) { status = "Rootfs kopyalanıyor… $mb MB" }
-                }
-            )
+                context,
+                uri,
+                selectedName ?: "linux-rootfs.tar.gz"
+            ) { mb ->
+                withContext(Dispatchers.Main) { status = "Rootfs kopyalanıyor… $mb MB" }
+            }
 
             if (localArchive == null) {
                 addLog("HATA: Dosya okunamadı.")
@@ -107,7 +104,6 @@ private fun FoldLinuxScreen(app: App) {
 
             status = "Linux kuruluyor…"
             addLog("Ubuntu rootfs açılıyor. Bu işlem birkaç dakika sürebilir.")
-
             val exitCode = installLocalRootfs(app, localArchive) { addLog(it) }
             withContext(Dispatchers.IO) { localArchive.delete() }
 
@@ -130,15 +126,13 @@ private fun FoldLinuxScreen(app: App) {
             .systemBarsPadding()
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 28.dp, vertical = 22.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text("🐧", fontSize = 46.sp, modifier = Modifier.padding(top = 8.dp))
             Text("FoldLinux", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text(
-                text = if (installed) "PC gibi açılan Linux ortamın" else "Telefonuna root gerekmeden Linux kur",
+                if (installed) "PC gibi açılan Linux ortamın" else "Telefonuna root gerekmeden Linux kur",
                 color = Color(0xFF9CA8B8),
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -198,8 +192,7 @@ private fun FoldLinuxScreen(app: App) {
                         Button(
                             onClick = {
                                 context.startActivity(
-                                    Intent(context, TerminalActivity::class.java)
-                                        .putExtra("distro", DISTRO_ALIAS)
+                                    Intent(context, TerminalActivity::class.java).putExtra("distro", DISTRO_ALIAS)
                                 )
                             },
                             modifier = Modifier.fillMaxWidth().height(58.dp)
@@ -210,7 +203,7 @@ private fun FoldLinuxScreen(app: App) {
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "v0.2 uyumluluk testi: Ubuntu doğrudan yerel rootfs arşivinden kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
+                            "v0.2 uyumluluk testi: Ubuntu yerel rootfs arşivinden kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
                             color = Color(0xFF8995A5),
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -329,14 +322,7 @@ private suspend fun installLocalRootfs(
             rootfs.absolutePath
         ).redirectErrorStream(true).start()
 
-        process.inputStream.bufferedReader().useLines { lines ->
-            lines.forEach { raw ->
-                val line = raw.trim()
-                if (line.isNotEmpty()) {
-                    withContext(Dispatchers.Main) { onLine(line) }
-                }
-            }
-        }
+        process.inputStream.close()
         val code = process.waitFor()
         if (code != 0) {
             withContext(Dispatchers.Main) { onLine("Arşiv açılamadı (tar çıkış kodu $code).") }
