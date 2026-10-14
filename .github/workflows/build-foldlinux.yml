@@ -42,11 +42,13 @@ jobs:
       - name: Apply FoldLinux UI
         run: |
           cp foldlinux/MainActivity.kt upstream-pr/android/app/src/main/java/id/or/oo/pr/MainActivity.kt
+          cp foldlinux/TerminalActivity.kt upstream-pr/android/app/src/main/java/id/or/oo/pr/TerminalActivity.kt
+          cp foldlinux/DesktopActivity.kt upstream-pr/android/app/src/main/java/id/or/oo/pr/DesktopActivity.kt
           cp foldlinux/AndroidManifest.xml upstream-pr/android/app/src/main/AndroidManifest.xml
           cp foldlinux/strings.xml upstream-pr/android/app/src/main/res/values/strings.xml
           sed -i 's/applicationId = "id.or.oo.pr"/applicationId = "com.foldlinux.app"/' upstream-pr/android/app/build.gradle.kts
-          sed -i 's/versionCode = 1/versionCode = 3/' upstream-pr/android/app/build.gradle.kts
-          sed -i 's/versionName = "1.0.0"/versionName = "0.3-prototype"/' upstream-pr/android/app/build.gradle.kts
+          sed -i 's/versionCode = 1/versionCode = 4/' upstream-pr/android/app/build.gradle.kts
+          sed -i 's/versionName = "1.0.0"/versionName = "0.4-prototype"/' upstream-pr/android/app/build.gradle.kts
           sed -i '/implementation(project(":proot-engine"))/i\    implementation("org.apache.commons:commons-compress:1.27.1")' upstream-pr/android/app/build.gradle.kts
 
       - name: Build debug APK
@@ -54,10 +56,10 @@ jobs:
         run: ./gradlew :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp upstream-pr/android/app/build/outputs/apk/debug/app-debug.apk FoldLinux-Prototype-v0.3.apk
+        run: cp upstream-pr/android/app/build/outputs/apk/debug/app-debug.apk FoldLinux-Prototype-v0.4.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoldLinux-Prototype-v0.3
-          path: FoldLinux-Prototype-v0.3.apk
+          name: FoldLinux-Prototype-v0.4
+          path: FoldLinux-Prototype-v0.4.apk
