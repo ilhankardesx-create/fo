@@ -47,23 +47,6 @@ jobs:
           sed -i 's/applicationId = "id.or.oo.pr"/applicationId = "com.foldlinux.app"/' upstream-pr/android/app/build.gradle.kts
           sed -i 's/versionCode = 1/versionCode = 2/' upstream-pr/android/app/build.gradle.kts
           sed -i 's/versionName = "1.0.0"/versionName = "0.2-prototype"/' upstream-pr/android/app/build.gradle.kts
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('upstream-pr/android/app/src/main/java/id/or/oo/pr/MainActivity.kt')
-          s = p.read_text()
-          old = '''        process.inputStream.bufferedReader().useLines { lines ->
-              lines.forEach { raw ->
-                  val line = raw.trim()
-                  if (line.isNotEmpty()) {
-                      withContext(Dispatchers.Main) { onLine(line) }
-                  }
-              }
-          }
-'''
-          if old not in s:
-              raise SystemExit('expected tar output block not found')
-          p.write_text(s.replace(old, '        process.inputStream.close()\n'))
-          PY
 
       - name: Build debug APK
         working-directory: upstream-pr/android
