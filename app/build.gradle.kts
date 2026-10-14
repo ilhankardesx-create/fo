@@ -21,6 +21,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.core:core:1.15.0")
     implementation("androidx.window:window:1.5.1")
     implementation("androidx.window:window-java:1.5.1")
 }
