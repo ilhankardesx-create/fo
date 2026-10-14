@@ -32,6 +32,9 @@ public class SetupActivity extends Activity {
     protected void onResume() {
         super.onResume();
         updateState();
+        if (allReady() && getIntent() != null && getIntent().hasCategory(Intent.CATEGORY_HOME)) {
+            startActivity(new Intent(this, LauncherActivity.class));
+        }
     }
 
     private void buildUi() {
@@ -43,14 +46,14 @@ public class SetupActivity extends Activity {
         setContentView(root);
 
         TextView title = new TextView(this);
-        title.setText("FOLDDESK v0.3");
+        title.setText("FOLDDESK v0.4");
         title.setTextColor(0xffffffff);
         title.setTextSize(28f);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         root.addView(title, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView info = new TextView(this);
-        info.setText("Laptop modu için üç izin gerekiyor. Bunlar imleci diğer uygulamaların üstünde tutmak, touchpad hareketlerini uygulamalara göndermek ve FoldDesk klavyesiyle yazmak için kullanılır.");
+        info.setText("Laptop modu için üç izin gerekiyor. v0.4 uygulamaları gerçek split-screen üst bölmesine, FoldDesk kontrol destesini ise alt bölmeye yerleştirmeyi dener.");
         info.setTextColor(0xffb7bec8);
         info.setTextSize(15f);
         info.setPadding(0, dp(16), 0, dp(20));
@@ -79,7 +82,7 @@ public class SetupActivity extends Activity {
         launchButton = button(root, "FOLDDESK'İ BAŞLAT");
         launchButton.setOnClickListener(v -> {
             if (allReady()) {
-                startActivity(new Intent(this, MainActivity.class));
+                startActivity(new Intent(this, LauncherActivity.class));
                 finish();
             }
         });
