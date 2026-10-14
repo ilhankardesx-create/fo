@@ -19,7 +19,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.limbo.emu.main.LimboEmuActivity;
+import com.limbo.emu.main.arm.LimboEmuActivity;
 import com.max2idea.android.limbo.files.FileInstaller;
 
 import java.io.File;
@@ -29,9 +29,8 @@ import java.util.ArrayList;
 
 /**
  * PocketDroid's user-facing launcher.
- *
- * The upstream Limbo/QEMU configuration UI stays hidden. PocketDroid owns the
- * guest selection and applies sane VM defaults automatically.
+ * The legacy emulator configuration UI remains hidden; PocketDroid owns
+ * guest selection and applies ARM64 VM defaults automatically.
  */
 public class PocketDroidActivity extends LimboEmuActivity {
 
@@ -39,7 +38,7 @@ public class PocketDroidActivity extends LimboEmuActivity {
     private static final String PREFS = "pocketdroid";
     private static final String PREF_IMAGE_PATH = "guest_image_path";
     private static final String PREF_IMAGE_NAME = "guest_image_name";
-    private static final String VM_NAME = "PocketDroid";
+    private static final String VM_NAME = "PocketDroidARM64";
 
     private SharedPreferences prefs;
     private TextView stateText;
@@ -117,7 +116,6 @@ public class PocketDroidActivity extends LimboEmuActivity {
         root.addView(badge, badgeParams);
 
         TextView title = text("PocketDroid", 32, Color.WHITE);
-        title.setGravity(Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -176,9 +174,8 @@ public class PocketDroidActivity extends LimboEmuActivity {
                 }
             }
         });
-        LinearLayout.LayoutParams primaryParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(60));
-        root.addView(primaryButton, primaryParams);
+        root.addView(primaryButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
 
         changeButton = new Button(this);
         changeButton.setText("Android imajını değiştir");
@@ -197,21 +194,12 @@ public class PocketDroidActivity extends LimboEmuActivity {
         changeParams.topMargin = dp(8);
         root.addView(changeButton, changeParams);
 
-        TextView note = text("RAM, CPU ve sanal makine ayarlarını PocketDroid otomatik yapar.",
-                13, Color.rgb(103, 111, 129));
-        LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        noteParams.topMargin = dp(22);
-        root.addView(note, noteParams);
-
         badge.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
                 Toast.makeText(PocketDroidActivity.this,
                         "Motor tanılama ekranı", Toast.LENGTH_SHORT).show();
-                Intent diagnostic = new Intent(PocketDroidActivity.this, LimboEmuActivity.class);
-                startActivity(diagnostic);
+                startActivity(new Intent(PocketDroidActivity.this, LimboEmuActivity.class));
                 return true;
             }
         });
@@ -230,12 +218,12 @@ public class PocketDroidActivity extends LimboEmuActivity {
             fileText.setText(imageName == null ? "Lütfen bekle" : imageName);
             primaryButton.setText("Hazırlanıyor…");
         } else if (hasImage) {
-            stateText.setText("İkinci Android hazır");
+            stateText.setText("ARM64 Android hazır");
             fileText.setText(imageName == null ? new File(imagePath).getName() : imageName);
             primaryButton.setText("Android’i Başlat");
         } else {
             stateText.setText("Henüz Android imajı seçilmedi");
-            fileText.setText("İlk kurulumda bir kez seçmen yeterli");
+            fileText.setText("ARM64 QEMU imajını bir kez seçmen yeterli");
             primaryButton.setText("Android İmajını Seç");
         }
     }
@@ -279,7 +267,7 @@ public class PocketDroidActivity extends LimboEmuActivity {
         } finally {
             if (cursor != null) cursor.close();
         }
-        return "android-image.img";
+        return "android-arm64.img";
     }
 
     private void copyGuestImage(final Uri uri) {
@@ -380,16 +368,17 @@ public class PocketDroidActivity extends LimboEmuActivity {
             Machine machine = controller.getMachine();
             if (machine == null) throw new Exception("Sanal makine oluşturulamadı");
 
+            // ARM64 guest defaults for QEMU's generic virt board.
             machine.setMemory(3072);
             machine.setCpuNum(2);
-            machine.setCpu("qemu64");
-            machine.setMachineType("pc");
+            machine.setCpu("cortex-a72");
+            machine.setMachineType("virt");
             machine.setEnableKVM(0);
             machine.setEnableMTTCG(1);
             machine.setEnableVNC(0);
-            machine.setVga("std");
+            machine.setVga("virtio-gpu-pci");
             machine.setNetwork("user");
-            machine.setNetworkCard("e1000");
+            machine.setNetworkCard("virtio-net-pci");
 
             String lower = guest.getName().toLowerCase();
             if (lower.endsWith(".iso")) {
@@ -409,9 +398,8 @@ public class PocketDroidActivity extends LimboEmuActivity {
             FileInstaller.installFiles(this, false);
 
             stateText.setText("Android başlatılıyor…");
-            fileText.setText("Sanal makine hazırlanıyor");
+            fileText.setText("ARM64 sanal makine hazırlanıyor");
             primaryButton.setEnabled(false);
-
             startSDL();
         } catch (Exception ex) {
             primaryButton.setEnabled(true);
