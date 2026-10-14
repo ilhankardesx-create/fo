@@ -32,11 +32,12 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
-            "cmake;3.22.1" \
-            "ndk;27.2.12479018"
+            "cmake;3.22.1"
 
       - name: Clone PRoot engine
-        run: git clone --depth 1 https://github.com/oonid/pr.git upstream-pr
+        run: |
+          git clone --depth 1 https://github.com/oonid/pr.git upstream-pr
+          git -C upstream-pr submodule update --init --depth 1 vendor/termlib
 
       - name: Apply FoldLinux UI
         run: |
