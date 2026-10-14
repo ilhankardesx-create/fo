@@ -1,0 +1,92 @@
+name: Build PocketDroid Clean
+
+on:
+  push:
+    branches: [ "pocketdroid-prototype" ]
+    paths:
+      - "pocketdroid-clean/**"
+      - ".github/workflows/build-pocketdroid-clean.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK + NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Stable debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.pk8 -o /tmp/testkey.pk8
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.x509.pem -o /tmp/testkey.x509.pem
+          openssl pkcs8 -inform DER -nocrypt -in /tmp/testkey.pk8 -out /tmp/testkey.pem
+          openssl pkcs12 -export -in /tmp/testkey.x509.pem -inkey /tmp/testkey.pem -name androiddebugkey -out /tmp/testkey.p12 -passout pass:android
+          keytool -importkeystore -noprompt \
+            -srckeystore /tmp/testkey.p12 -srcstoretype PKCS12 -srcstorepass android \
+            -destkeystore "$HOME/.android/debug.keystore" -deststoretype JKS -deststorepass android \
+            -alias androiddebugkey
+
+      - name: Import ARM64 QEMU runtime only
+        run: |
+          curl -fL --retry 3 \
+            https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk \
+            -o /tmp/qemu-arm-runtime.apk
+          mkdir -p pocketdroid-clean/app/src/main/jniLibs/arm64-v8a
+          unzip -q /tmp/qemu-arm-runtime.apk 'lib/arm64-v8a/*' -d /tmp/qemu-libs
+          cp /tmp/qemu-libs/lib/arm64-v8a/*.so pocketdroid-clean/app/src/main/jniLibs/arm64-v8a/
+          test -f pocketdroid-clean/app/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
+          echo "QEMU dependencies:"
+          readelf -d pocketdroid-clean/app/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so | grep NEEDED || true
+
+      - name: Add ARM64 UEFI firmware
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-efi-aarch64
+          FW=$(find /usr/share -type f \( -name 'AAVMF_CODE.fd' -o -name 'QEMU_EFI.fd' \) | head -n 1)
+          test -n "$FW"
+          mkdir -p pocketdroid-clean/app/src/main/assets
+          cp "$FW" pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
+          ls -lh pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
+
+      - name: Build clean PocketDroid
+        run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
+
+      - name: Package APK
+        run: |
+          APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" PocketDroid-Clean-v0.7.apk
+          ls -lh PocketDroid-Clean-v0.7.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketDroid-Clean-v0.7
+          path: PocketDroid-Clean-v0.7.apk
+          retention-days: 30
