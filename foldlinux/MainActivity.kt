@@ -39,7 +39,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 private const val DISTRO_ALIAS = "foldlinux"
-private const val UBUNTU_BASE_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04.1/release/ubuntu-base-24.04.5-base-arm64.tar.gz"
+private const val UBUNTU_BASE_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.5-base-arm64.tar.gz"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
