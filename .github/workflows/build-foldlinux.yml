@@ -34,6 +34,18 @@ jobs:
             "build-tools;36.0.0" \
             "cmake;3.22.1"
 
+      - name: Prepare stable prototype signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.pk8 -o /tmp/testkey.pk8
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.x509.pem -o /tmp/testkey.x509.pem
+          openssl pkcs8 -inform DER -nocrypt -in /tmp/testkey.pk8 -out /tmp/testkey.pem
+          openssl pkcs12 -export -in /tmp/testkey.x509.pem -inkey /tmp/testkey.pem -name androiddebugkey -out /tmp/testkey.p12 -passout pass:android
+          keytool -importkeystore -noprompt \
+            -srckeystore /tmp/testkey.p12 -srcstoretype PKCS12 -srcstorepass android \
+            -destkeystore "$HOME/.android/debug.keystore" -deststoretype JKS -deststorepass android \
+            -alias androiddebugkey
+
       - name: Clone PRoot engine
         run: |
           git clone --depth 1 https://github.com/oonid/pr.git upstream-pr
@@ -46,7 +58,8 @@ jobs:
           cp foldlinux/DesktopActivity.kt upstream-pr/android/app/src/main/java/id/or/oo/pr/DesktopActivity.kt
           cp foldlinux/AndroidManifest.xml upstream-pr/android/app/src/main/AndroidManifest.xml
           cp foldlinux/strings.xml upstream-pr/android/app/src/main/res/values/strings.xml
-          sed -i 's/applicationId = "id.or.oo.pr"/applicationId = "com.foldlinux.app"/' upstream-pr/android/app/build.gradle.kts
+          sed -i 's/>FoldLinux</>FoldLinux Dev</' upstream-pr/android/app/src/main/res/values/strings.xml
+          sed -i 's/applicationId = "id.or.oo.pr"/applicationId = "com.foldlinux.prototype"/' upstream-pr/android/app/build.gradle.kts
           sed -i 's/versionCode = 1/versionCode = 4/' upstream-pr/android/app/build.gradle.kts
           sed -i 's/versionName = "1.0.0"/versionName = "0.4-prototype"/' upstream-pr/android/app/build.gradle.kts
           sed -i '/implementation(project(":proot-engine"))/i\    implementation("org.apache.commons:commons-compress:1.27.1")' upstream-pr/android/app/build.gradle.kts
