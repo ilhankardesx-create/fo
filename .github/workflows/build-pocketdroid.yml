@@ -70,16 +70,27 @@ jobs:
         run: |
           git clone --depth 1 --branch v6.0.1-LimboEmulator https://github.com/limboemu/limbo.git limbo
 
-      - name: Import ARM64 QEMU guest binaries
+      - name: Import complete ARM64 QEMU runtime
         run: |
           curl -fL --retry 3 \
             https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk \
             -o /tmp/limbo-arm-engine.apk
-          mkdir -p /tmp/engine-libs
+
+          mkdir -p /tmp/engine-libs /tmp/engine-assets
           unzip -q /tmp/limbo-arm-engine.apk 'lib/arm64-v8a/*' -d /tmp/engine-libs
+          unzip -q /tmp/limbo-arm-engine.apk 'assets/*' -d /tmp/engine-assets
+
           mkdir -p limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a
-          cp /tmp/engine-libs/lib/arm64-v8a/*.so limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
+          cp /tmp/engine-libs/lib/arm64-v8a/*.so \
+            limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
+
+          mkdir -p limbo/limbo-android-arm/src/main/assets
+          cp -a /tmp/engine-assets/assets/. \
+            limbo/limbo-android-arm/src/main/assets/
+
           test -f limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
+          test -f limbo/limbo-android-arm/src/main/assets/QEMU_VERSION
+          echo "QEMU_VERSION=$(cat limbo/limbo-android-arm/src/main/assets/QEMU_VERSION)"
 
       - name: Overlay PocketDroid UI and firmware
         run: |
@@ -91,9 +102,6 @@ jobs:
           mkdir -p limbo/limbo-android-arm/src/main/assets/pocketdroid
           cp /tmp/AAVMF_CODE.fd \
             limbo/limbo-android-arm/src/main/assets/pocketdroid/AAVMF_CODE.fd
-          mkdir -p limbo/limbo-android-arm/src/main/assets
-          printf '5.1.0\n' > limbo/limbo-android-arm/src/main/assets/QEMU_VERSION
-          test "$(cat limbo/limbo-android-arm/src/main/assets/QEMU_VERSION)" = "5.1.0"
 
       - name: Brand and tune PocketDroid
         run: |
