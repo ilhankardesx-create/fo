@@ -55,8 +55,6 @@ public class PocketDroidActivity extends LimboEmuActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // The inherited activity is only used to initialise Limbo/QEMU.
-        // PocketDroid presents its own UI and does not expose the legacy panel.
         MachineController.getInstance().removeOnStatusChangeListener(this);
         MachineController.getInstance().removeOnEventListener(this);
 
@@ -207,7 +205,6 @@ public class PocketDroidActivity extends LimboEmuActivity {
         noteParams.topMargin = dp(22);
         root.addView(note, noteParams);
 
-        // Hidden diagnostic shortcut: long-pressing the logo opens the old engine UI.
         badge.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
@@ -423,7 +420,7 @@ public class PocketDroidActivity extends LimboEmuActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         if (primaryButton != null && !copying) {
             primaryButton.setEnabled(true);
