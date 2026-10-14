@@ -1,6 +1,7 @@
 package com.pocketdroid.vm;
 
 import java.io.File;
+import java.util.ArrayList;
 
 public final class QemuBridge {
     static {
@@ -42,21 +43,44 @@ public final class QemuBridge {
     private native String nativeStopInternal();
 
     private static String[] sanitize(String[] source) {
-        if (source == null) return new String[0];
-        String[] out = source.clone();
-        for (int i = 0; i < out.length; i++) {
-            if ("max,pauth-impdef=on".equals(out[i])) {
-                out[i] = "max";
-            } else if ("tcg,tb-size=1024,thread=multi".equals(out[i])) {
-                out[i] = "tcg,thread=multi";
+        ArrayList<String> out = new ArrayList<>();
+        boolean hasDisplay = false;
+        boolean hasVga = false;
+        boolean hasSmp = false;
+
+        if (source != null) {
+            for (int i = 0; i < source.length; i++) {
+                String value = source[i];
+                if ("max,pauth-impdef=on".equals(value)) {
+                    value = "max";
+                } else if ("tcg,tb-size=1024,thread=multi".equals(value)) {
+                    value = "tcg,thread=multi";
+                }
+                if ("-display".equals(value)) hasDisplay = true;
+                if ("-vga".equals(value)) hasVga = true;
+                if ("-smp".equals(value)) hasSmp = true;
+                out.add(value);
             }
         }
-        return out;
+
+        // PocketDroid renders QEMU through its built-in localhost VNC view.
+        // Disable any implicit SDL/default VGA path so Android never needs
+        // Limbo's SDL Activity just to create the guest display.
+        if (!hasDisplay) {
+            out.add("-display");
+            out.add("none");
+        }
+        if (!hasVga) {
+            out.add("-vga");
+            out.add("none");
+        }
+        if (!hasSmp) {
+            out.add("-smp");
+            out.add("2");
+        }
+        return out.toArray(new String[0]);
     }
 
-    // The imported Android QEMU compatibility layer can call this when a
-    // graphical display changes size. PocketDroid's actual display is VNC,
-    // so the callback is intentionally lightweight.
     public static void onVMResolutionChanged(int width, int height) {
     }
 
