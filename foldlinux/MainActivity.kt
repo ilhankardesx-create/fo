@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.system.Os
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -34,8 +35,14 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.Paths
 
 private const val DISTRO_ALIAS = "foldlinux"
 private const val UBUNTU_BASE_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.5-base-arm64.tar.gz"
@@ -203,7 +210,7 @@ private fun FoldLinuxScreen(app: App) {
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "v0.2 uyumluluk testi: Ubuntu yerel rootfs arşivinden kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
+                            "v0.3 uyumluluk testi: Ubuntu rootfs Android içinde güvenli Java arşiv açıcıyla kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
                             color = Color(0xFF8995A5),
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -235,7 +242,7 @@ private fun FoldLinuxScreen(app: App) {
             }
 
             Text(
-                "FoldLinux Prototype v0.2 • ARM64",
+                "FoldLinux Prototype v0.3 • ARM64",
                 color = Color(0xFF5F6977),
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 12.dp)
@@ -305,29 +312,11 @@ private suspend fun installLocalRootfs(
             return@withContext 10
         }
 
-        val busybox = File(app.prefixDir, "bin/busybox")
-        if (!busybox.exists()) {
-            withContext(Dispatchers.Main) { onLine("HATA: BusyBox bulunamadı.") }
-            rootfs.deleteRecursively()
-            return@withContext 11
-        }
-
-        withContext(Dispatchers.Main) { onLine("Rootfs çıkartılıyor…") }
-        val process = ProcessBuilder(
-            busybox.absolutePath,
-            "tar",
-            "-xzf",
-            archive.absolutePath,
-            "-C",
-            rootfs.absolutePath
-        ).redirectErrorStream(true).start()
-
-        process.inputStream.close()
-        val code = process.waitFor()
-        if (code != 0) {
-            withContext(Dispatchers.Main) { onLine("Arşiv açılamadı (tar çıkış kodu $code).") }
-            rootfs.deleteRecursively()
-            return@withContext code
+        withContext(Dispatchers.Main) { onLine("Rootfs Java ile çıkartılıyor…") }
+        extractTarGz(archive, rootfs) { extracted ->
+            if (extracted % 750 == 0) {
+                withContext(Dispatchers.Main) { onLine("$extracted dosya hazırlandı…") }
+            }
         }
 
         val shell = File(rootfs, "bin/sh")
@@ -341,8 +330,7 @@ private suspend fun installLocalRootfs(
         File(rootfs, "tmp").mkdirs()
         File(rootfs, "root").mkdirs()
         val etc = File(rootfs, "etc").apply { mkdirs() }
-        val resolv = File(etc, "resolv.conf")
-        if (!resolv.exists()) resolv.writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
+        File(etc, "resolv.conf").writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
         val hosts = File(etc, "hosts")
         if (!hosts.exists()) hosts.writeText("127.0.0.1 localhost\n::1 localhost\n")
 
@@ -353,7 +341,93 @@ private suspend fun installLocalRootfs(
         0
     } catch (t: Throwable) {
         rootfs.deleteRecursively()
-        withContext(Dispatchers.Main) { onLine("HATA: ${t.message}") }
+        withContext(Dispatchers.Main) { onLine("HATA: ${t.javaClass.simpleName}: ${t.message}") }
         -1
+    }
+}
+
+private suspend fun extractTarGz(
+    archive: File,
+    rootfs: File,
+    onEntryCount: suspend (Int) -> Unit
+) {
+    val rootPath = rootfs.toPath().toAbsolutePath().normalize()
+    val delayedDirModes = mutableListOf<Pair<File, Int>>()
+    val delayedHardLinks = mutableListOf<Pair<File, String>>()
+    var count = 0
+
+    BufferedInputStream(archive.inputStream(), 256 * 1024).use { buffered ->
+        GzipCompressorInputStream(buffered).use { gzip ->
+            TarArchiveInputStream(gzip).use { tar ->
+                while (true) {
+                    val entry: TarArchiveEntry = tar.nextTarEntry ?: break
+                    val cleanName = entry.name.removePrefix("./")
+                    if (cleanName.isBlank()) continue
+                    val destPath = rootPath.resolve(cleanName).normalize()
+                    if (!destPath.startsWith(rootPath)) {
+                        throw SecurityException("Arşiv rootfs dışına çıkmaya çalıştı: ${entry.name}")
+                    }
+                    val dest = destPath.toFile()
+
+                    when {
+                        entry.isDirectory -> {
+                            dest.mkdirs()
+                            delayedDirModes += dest to entry.mode
+                        }
+                        entry.isSymbolicLink -> {
+                            dest.parentFile?.mkdirs()
+                            Files.deleteIfExists(destPath)
+                            Files.createSymbolicLink(destPath, Paths.get(entry.linkName))
+                        }
+                        entry.isLink -> {
+                            dest.parentFile?.mkdirs()
+                            delayedHardLinks += dest to entry.linkName
+                        }
+                        entry.isFile -> {
+                            dest.parentFile?.mkdirs()
+                            FileOutputStream(dest).use { output ->
+                                tar.copyTo(output, 256 * 1024)
+                            }
+                            applyMode(dest, entry.mode)
+                        }
+                    }
+
+                    count++
+                    onEntryCount(count)
+                }
+            }
+        }
+    }
+
+    for ((dest, linkName) in delayedHardLinks) {
+        val targetPath = rootPath.resolve(linkName.removePrefix("./")).normalize()
+        if (!targetPath.startsWith(rootPath)) {
+            throw SecurityException("Hardlink rootfs dışına çıkıyor: $linkName")
+        }
+        dest.parentFile?.mkdirs()
+        Files.deleteIfExists(dest.toPath())
+        if (Files.exists(targetPath)) {
+            try {
+                Files.createLink(dest.toPath(), targetPath)
+            } catch (_: Throwable) {
+                Files.copy(targetPath, dest.toPath())
+            }
+        } else {
+            throw IllegalStateException("Hardlink hedefi bulunamadı: $linkName")
+        }
+    }
+
+    for ((dir, mode) in delayedDirModes.asReversed()) {
+        applyMode(dir, mode)
+    }
+}
+
+private fun applyMode(file: File, mode: Int) {
+    try {
+        Os.chmod(file.absolutePath, mode and 0x1FF)
+    } catch (_: Throwable) {
+        file.setReadable(true, false)
+        file.setWritable(true, true)
+        if (mode and 0x49 != 0) file.setExecutable(true, false)
     }
 }
