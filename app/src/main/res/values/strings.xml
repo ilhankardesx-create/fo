@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FoldDesk Prototype</string>
+    <string name="accessibility_description">FoldDesk touchpad hareketlerini diğer uygulamalara göndermek için kullanılır.</string>
+    <string name="ime_name">FoldDesk Keyboard</string>
+</resources>
