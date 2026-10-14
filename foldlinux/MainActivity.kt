@@ -2,7 +2,6 @@ package id.or.oo.pr
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
@@ -44,11 +43,11 @@ private const val UBUNTU_BASE_URL = "https://cdimage.ubuntu.com/ubuntu-base/rele
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
 
         val app = application as App
         setContent {
@@ -70,10 +69,11 @@ class MainActivity : ComponentActivity() {
 private fun FoldLinuxScreen(app: App) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
     var installed by remember { mutableStateOf(isFoldLinuxInstalled(app)) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(if (installed) "Ubuntu ortamı hazır" else "Kurulum için ARM64 rootfs seç") }
+    var status by remember {
+        mutableStateOf(if (installed) "Ubuntu ortamı hazır" else "Kurulum için ARM64 rootfs seç")
+    }
     var selectedName by remember { mutableStateOf<String?>(null) }
     var logs by remember { mutableStateOf(listOf<String>()) }
 
@@ -81,23 +81,22 @@ private fun FoldLinuxScreen(app: App) {
         logs = (logs + line).takeLast(220)
     }
 
-    val filePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null || busy) return@rememberLauncherForActivityResult
         selectedName = queryDisplayName(context, uri) ?: "linux-rootfs.tar.gz"
         busy = true
         status = "Dosya hazırlanıyor…"
-        logs = listOf("Seçildi: ${selectedName}")
+        logs = listOf("Seçildi: $selectedName")
 
         scope.launch {
-            val localArchive = withContext(Dispatchers.IO) {
-                copyArchiveToPrivateCache(context, uri, selectedName ?: "linux-rootfs.tar.gz") { copiedMb ->
-                    withContext(Dispatchers.Main) {
-                        status = "Rootfs kopyalanıyor… ${copiedMb} MB"
-                    }
+            val localArchive = copyArchiveToPrivateCache(
+                context = context,
+                uri = uri,
+                displayName = selectedName ?: "linux-rootfs.tar.gz",
+                onProgressMb = { mb ->
+                    withContext(Dispatchers.Main) { status = "Rootfs kopyalanıyor… $mb MB" }
                 }
-            }
+            )
 
             if (localArchive == null) {
                 addLog("HATA: Dosya okunamadı.")
@@ -107,12 +106,9 @@ private fun FoldLinuxScreen(app: App) {
             }
 
             status = "Linux kuruluyor…"
-            addLog("Kurulum başlatıldı. Bu işlem birkaç dakika sürebilir.")
-            val exitCode = runPrCli(
-                app = app,
-                args = listOf("install", localArchive.absolutePath, "--override-alias", DISTRO_ALIAS),
-                onLine = { addLog(it) }
-            )
+            addLog("Ubuntu rootfs açılıyor. Bu işlem birkaç dakika sürebilir.")
+
+            val exitCode = installLocalRootfs(app, localArchive) { addLog(it) }
             withContext(Dispatchers.IO) { localArchive.delete() }
 
             installed = isFoldLinuxInstalled(app)
@@ -139,17 +135,8 @@ private fun FoldLinuxScreen(app: App) {
                 .padding(horizontal = 28.dp, vertical = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "🐧",
-                fontSize = 46.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            Text(
-                text = "FoldLinux",
-                color = Color.White,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Text("🐧", fontSize = 46.sp, modifier = Modifier.padding(top = 8.dp))
+            Text("FoldLinux", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text(
                 text = if (installed) "PC gibi açılan Linux ortamın" else "Telefonuna root gerekmeden Linux kur",
                 color = Color(0xFF9CA8B8),
@@ -165,7 +152,7 @@ private fun FoldLinuxScreen(app: App) {
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        text = status,
+                        status,
                         color = if (installed) Color(0xFF7BD88F) else Color.White,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 17.sp
@@ -174,12 +161,10 @@ private fun FoldLinuxScreen(app: App) {
                         Spacer(Modifier.height(6.dp))
                         Text(it, color = Color(0xFF9CA8B8), fontSize = 12.sp)
                     }
-
                     if (busy) {
                         Spacer(Modifier.height(16.dp))
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
-
                     Spacer(Modifier.height(18.dp))
 
                     if (!installed) {
@@ -199,12 +184,9 @@ private fun FoldLinuxScreen(app: App) {
                             Spacer(Modifier.width(10.dp))
                             Text("Linux dosyasını seç ve kur")
                         }
-
                         Spacer(Modifier.height(10.dp))
                         OutlinedButton(
-                            onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UBUNTU_BASE_URL)))
-                            },
+                            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UBUNTU_BASE_URL))) },
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth().height(50.dp)
                         ) {
@@ -215,9 +197,10 @@ private fun FoldLinuxScreen(app: App) {
                     } else {
                         Button(
                             onClick = {
-                                val intent = Intent(context, TerminalActivity::class.java)
-                                intent.putExtra("distro", DISTRO_ALIAS)
-                                context.startActivity(intent)
+                                context.startActivity(
+                                    Intent(context, TerminalActivity::class.java)
+                                        .putExtra("distro", DISTRO_ALIAS)
+                                )
                             },
                             modifier = Modifier.fillMaxWidth().height(58.dp)
                         ) {
@@ -225,10 +208,9 @@ private fun FoldLinuxScreen(app: App) {
                             Spacer(Modifier.width(10.dp))
                             Text("Linux'u Başlat")
                         }
-
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = "v0.1 uyumluluk testi: ilk açılış terminale düşer. XFCE tam ekran masaüstü bir sonraki aşamada bu çalışan Linux motorunun üstüne bağlanacak.",
+                            "v0.2 uyumluluk testi: Ubuntu doğrudan yerel rootfs arşivinden kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
                             color = Color(0xFF8995A5),
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -247,7 +229,7 @@ private fun FoldLinuxScreen(app: App) {
                     val scroll = rememberScrollState()
                     LaunchedEffect(logs.size) { scroll.scrollTo(scroll.maxValue) }
                     Text(
-                        text = logs.joinToString("\n"),
+                        logs.joinToString("\n"),
                         modifier = Modifier.fillMaxSize().verticalScroll(scroll).padding(14.dp),
                         color = Color(0xFFB8C4D3),
                         fontFamily = FontFamily.Monospace,
@@ -260,7 +242,7 @@ private fun FoldLinuxScreen(app: App) {
             }
 
             Text(
-                text = "FoldLinux Prototype v0.1 • ARM64",
+                "FoldLinux Prototype v0.2 • ARM64",
                 color = Color(0xFF5F6977),
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 12.dp)
@@ -270,9 +252,8 @@ private fun FoldLinuxScreen(app: App) {
 }
 
 private fun isFoldLinuxInstalled(app: App): Boolean {
-    val oci = File(app.prefixDir, "var/lib/pr/containers/$DISTRO_ALIAS/rootfs")
-    val legacy = File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
-    return oci.isDirectory || legacy.isDirectory
+    val rootfs = File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
+    return rootfs.isDirectory && File(rootfs, "bin/sh").exists() && File(rootfs, "etc/passwd").exists()
 }
 
 private fun queryDisplayName(context: android.content.Context, uri: Uri): String? {
@@ -318,47 +299,74 @@ private suspend fun copyArchiveToPrivateCache(
     }
 }
 
-private suspend fun runPrCli(
+private suspend fun installLocalRootfs(
     app: App,
-    args: List<String>,
+    archive: File,
     onLine: suspend (String) -> Unit
 ): Int = withContext(Dispatchers.IO) {
-    val binDir = File(app.prefixDir, "bin")
-    val prCli = File(binDir, "pr-cli").absolutePath
-    val cmd = arrayOf(prCli, *args.toTypedArray())
-
-    val pb = ProcessBuilder(*cmd)
-    pb.environment().putAll(
-        mapOf(
-            "APP_PREFIX" to app.prefixDir.absolutePath,
-            "APP_HOME" to app.homeDir.absolutePath,
-            "APP_PACKAGE" to app.packageName,
-            "PATH" to "${binDir.absolutePath}:/system/bin:/system/xbin",
-            "PROOT_NO_SECCOMP" to "1",
-            "PROOT_TMP_DIR" to app.cacheDir.absolutePath,
-            "HOME" to app.homeDir.absolutePath,
-            "TERM" to "xterm-256color",
-            "LANG" to "en_US.UTF-8",
-            "TMPDIR" to app.cacheDir.absolutePath
-        )
-    )
-    pb.redirectErrorStream(true)
-
+    val rootfs = File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
     try {
-        val process = pb.start()
+        if (rootfs.exists()) rootfs.deleteRecursively()
+        if (!rootfs.mkdirs() && !rootfs.isDirectory) {
+            withContext(Dispatchers.Main) { onLine("HATA: rootfs klasörü oluşturulamadı.") }
+            return@withContext 10
+        }
+
+        val busybox = File(app.prefixDir, "bin/busybox")
+        if (!busybox.exists()) {
+            withContext(Dispatchers.Main) { onLine("HATA: BusyBox bulunamadı.") }
+            rootfs.deleteRecursively()
+            return@withContext 11
+        }
+
+        withContext(Dispatchers.Main) { onLine("Rootfs çıkartılıyor…") }
+        val process = ProcessBuilder(
+            busybox.absolutePath,
+            "tar",
+            "-xzf",
+            archive.absolutePath,
+            "-C",
+            rootfs.absolutePath
+        ).redirectErrorStream(true).start()
+
         process.inputStream.bufferedReader().useLines { lines ->
             lines.forEach { raw ->
-                val cleaned = raw
-                    .replace(Regex("\\x1B\\[[0-9;]*[mGKHJ]"), "")
-                    .replace("\r", "")
-                    .trim()
-                if (cleaned.isNotEmpty()) {
-                    withContext(Dispatchers.Main) { onLine(cleaned) }
+                val line = raw.trim()
+                if (line.isNotEmpty()) {
+                    withContext(Dispatchers.Main) { onLine(line) }
                 }
             }
         }
-        process.waitFor()
+        val code = process.waitFor()
+        if (code != 0) {
+            withContext(Dispatchers.Main) { onLine("Arşiv açılamadı (tar çıkış kodu $code).") }
+            rootfs.deleteRecursively()
+            return@withContext code
+        }
+
+        val shell = File(rootfs, "bin/sh")
+        val passwd = File(rootfs, "etc/passwd")
+        if (!shell.exists() || !passwd.exists()) {
+            withContext(Dispatchers.Main) { onLine("HATA: Geçerli Linux rootfs bulunamadı (bin/sh veya etc/passwd eksik).") }
+            rootfs.deleteRecursively()
+            return@withContext 12
+        }
+
+        File(rootfs, "tmp").mkdirs()
+        File(rootfs, "root").mkdirs()
+        val etc = File(rootfs, "etc").apply { mkdirs() }
+        val resolv = File(etc, "resolv.conf")
+        if (!resolv.exists()) resolv.writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
+        val hosts = File(etc, "hosts")
+        if (!hosts.exists()) hosts.writeText("127.0.0.1 localhost\n::1 localhost\n")
+
+        withContext(Dispatchers.Main) {
+            onLine("Ubuntu rootfs doğrulandı ✓")
+            onLine("/bin/sh ve /etc/passwd hazır ✓")
+        }
+        0
     } catch (t: Throwable) {
+        rootfs.deleteRecursively()
         withContext(Dispatchers.Main) { onLine("HATA: ${t.message}") }
         -1
     }
