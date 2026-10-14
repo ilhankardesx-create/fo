@@ -91,6 +91,9 @@ jobs:
           mkdir -p limbo/limbo-android-arm/src/main/assets/pocketdroid
           cp /tmp/AAVMF_CODE.fd \
             limbo/limbo-android-arm/src/main/assets/pocketdroid/AAVMF_CODE.fd
+          mkdir -p limbo/limbo-android-arm/src/main/assets
+          printf '5.1.0\n' > limbo/limbo-android-arm/src/main/assets/QEMU_VERSION
+          test "$(cat limbo/limbo-android-arm/src/main/assets/QEMU_VERSION)" = "5.1.0"
 
       - name: Brand and tune PocketDroid
         run: |
@@ -140,12 +143,12 @@ jobs:
         run: |
           APK=$(find limbo/limbo-android-arm/build/outputs/apk -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Prototype-v0.5.apk
-          ls -lh PocketDroid-Prototype-v0.5.apk
+          cp "$APK" PocketDroid-Prototype-v0.6.apk
+          ls -lh PocketDroid-Prototype-v0.6.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Prototype-v0.5
-          path: PocketDroid-Prototype-v0.5.apk
+          name: PocketDroid-Prototype-v0.6
+          path: PocketDroid-Prototype-v0.6.apk
           retention-days: 30
