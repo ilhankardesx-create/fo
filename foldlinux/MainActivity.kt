@@ -46,8 +46,22 @@ import java.nio.file.Paths
 
 private const val DISTRO_ALIAS = "foldlinux"
 private const val UBUNTU_BASE_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.5-base-arm64.tar.gz"
+private const val DESKTOP_MARKER = ".foldlinux-desktop-ready"
+
+private const val DESKTOP_INSTALL_COMMAND =
+    "export DEBIAN_FRONTEND=noninteractive; " +
+    "export APT_LISTCHANGES_FRONTEND=none; " +
+    "printf '#!/bin/sh\\nexit 101\\n' > /usr/sbin/policy-rc.d; chmod +x /usr/sbin/policy-rc.d; " +
+    "apt update && " +
+    "apt install -y --no-install-recommends xfce4 xfce4-terminal tigervnc-standalone-server novnc websockify dbus-x11 fonts-dejavu-core procps && " +
+    "touch /root/$DESKTOP_MARKER; " +
+    "CODE=$?; echo; " +
+    "if [ $CODE -eq 0 ]; then echo '=== FoldLinux XFCE kurulumu tamamlandi ==='; else echo '=== XFCE kurulumu tamamlanamadi ==='; fi; " +
+    "sleep 2; exit"
 
 class MainActivity : ComponentActivity() {
+    private val resumeCounter = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -66,21 +80,46 @@ class MainActivity : ComponentActivity() {
                     secondary = Color(0xFF9DB7FF)
                 )
             ) {
-                FoldLinuxScreen(app)
+                FoldLinuxScreen(app, resumeCounter.intValue)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeCounter.intValue++
     }
 }
 
 @Composable
-private fun FoldLinuxScreen(app: App) {
+private fun FoldLinuxScreen(app: App, resumeSignal: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
     var installed by remember { mutableStateOf(isFoldLinuxInstalled(app)) }
+    var desktopReady by remember { mutableStateOf(isDesktopInstalled(app)) }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf(if (installed) "Ubuntu ortamı hazır" else "Kurulum için ARM64 rootfs seç") }
+    var status by remember {
+        mutableStateOf(
+            when {
+                desktopReady -> "XFCE masaüstü hazır ✓"
+                installed -> "Ubuntu hazır • Masaüstü kurulabilir"
+                else -> "Kurulum için ARM64 rootfs seç"
+            }
+        )
+    }
     var selectedName by remember { mutableStateOf<String?>(null) }
     var logs by remember { mutableStateOf(listOf<String>()) }
+
+    LaunchedEffect(resumeSignal) {
+        installed = isFoldLinuxInstalled(app)
+        desktopReady = isDesktopInstalled(app)
+        status = when {
+            desktopReady -> "XFCE masaüstü hazır ✓"
+            installed -> "Ubuntu hazır • Masaüstü kurulabilir"
+            else -> "Kurulum için ARM64 rootfs seç"
+        }
+    }
 
     fun addLog(line: String) {
         logs = (logs + line).takeLast(220)
@@ -115,10 +154,11 @@ private fun FoldLinuxScreen(app: App) {
             withContext(Dispatchers.IO) { localArchive.delete() }
 
             installed = isFoldLinuxInstalled(app)
+            desktopReady = isDesktopInstalled(app)
             busy = false
             if (exitCode == 0 && installed) {
-                status = "Kurulum tamamlandı ✓"
-                addLog("FoldLinux hazır. Linux'u Başlat'a basabilirsin.")
+                status = "Ubuntu kuruldu ✓"
+                addLog("Ubuntu hazır. Şimdi XFCE masaüstünü kurabilirsin.")
             } else {
                 status = "Kurulum tamamlanamadı"
                 addLog("Çıkış kodu: $exitCode")
@@ -139,7 +179,11 @@ private fun FoldLinuxScreen(app: App) {
             Text("🐧", fontSize = 46.sp, modifier = Modifier.padding(top = 8.dp))
             Text("FoldLinux", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (installed) "PC gibi açılan Linux ortamın" else "Telefonuna root gerekmeden Linux kur",
+                when {
+                    desktopReady -> "Ubuntu masaüstün hazır"
+                    installed -> "Ubuntu çalışıyor • Sırada XFCE var"
+                    else -> "Telefonuna root gerekmeden Linux kur"
+                },
                 color = Color(0xFF9CA8B8),
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
@@ -158,63 +202,125 @@ private fun FoldLinuxScreen(app: App) {
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 17.sp
                     )
+
                     selectedName?.let {
                         Spacer(Modifier.height(6.dp))
                         Text(it, color = Color(0xFF9CA8B8), fontSize = 12.sp)
                     }
+
                     if (busy) {
                         Spacer(Modifier.height(16.dp))
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
+
                     Spacer(Modifier.height(18.dp))
 
-                    if (!installed) {
-                        Button(
-                            onClick = {
-                                filePicker.launch(arrayOf(
-                                    "application/gzip",
-                                    "application/x-gzip",
-                                    "application/x-tar",
-                                    "application/octet-stream"
-                                ))
-                            },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth().height(54.dp)
-                        ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Linux dosyasını seç ve kur")
+                    when {
+                        !installed -> {
+                            Button(
+                                onClick = {
+                                    filePicker.launch(arrayOf(
+                                        "application/gzip",
+                                        "application/x-gzip",
+                                        "application/x-tar",
+                                        "application/octet-stream"
+                                    ))
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth().height(54.dp)
+                            ) {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Linux dosyasını seç ve kur")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UBUNTU_BASE_URL))) },
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Ubuntu Base ARM64 indir")
+                            }
                         }
-                        Spacer(Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UBUNTU_BASE_URL))) },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Ubuntu Base ARM64 indir")
+
+                        !desktopReady -> {
+                            Button(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(context, TerminalActivity::class.java)
+                                            .putExtra("distro", DISTRO_ALIAS)
+                                            .putExtra("autoCommand", DESKTOP_INSTALL_COMMAND)
+                                            .putExtra("autoClose", true)
+                                            .putExtra("showKeyboard", false)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth().height(58.dp)
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("XFCE Masaüstünü Kur")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(context, TerminalActivity::class.java)
+                                            .putExtra("distro", DISTRO_ALIAS)
+                                            .putExtra("showKeyboard", true)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) {
+                                Text("Terminali Aç")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "XFCE + TigerVNC + noVNC kurulacak. İlk kurulum internet hızına göre birkaç dakika sürebilir ve yaklaşık 1 GB'tan fazla alan kullanabilir.",
+                                color = Color(0xFF8995A5),
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
                         }
-                    } else {
-                        Button(
-                            onClick = {
-                                context.startActivity(
-                                    Intent(context, TerminalActivity::class.java).putExtra("distro", DISTRO_ALIAS)
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth().height(58.dp)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Linux'u Başlat")
+
+                        else -> {
+                            Button(
+                                onClick = {
+                                    context.startActivity(Intent(context, DesktopActivity::class.java))
+                                },
+                                modifier = Modifier.fillMaxWidth().height(60.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Linux Masaüstünü Başlat")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(context, TerminalActivity::class.java)
+                                            .putExtra("distro", DISTRO_ALIAS)
+                                            .putExtra("showKeyboard", true)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) {
+                                Text("Terminal")
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                "Masaüstü FoldLinux içinde tam ekran açılır. Dokunmatik, Bluetooth mouse ve klavye noVNC üzerinden XFCE'ye iletilir.",
+                                color = Color(0xFF8995A5),
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
                         }
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "v0.3 uyumluluk testi: Ubuntu rootfs Android içinde güvenli Java arşiv açıcıyla kurulur. İlk açılış terminale düşer; XFCE sonraki aşamada eklenecek.",
-                            color = Color(0xFF8995A5),
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        )
                     }
                 }
             }
@@ -242,7 +348,7 @@ private fun FoldLinuxScreen(app: App) {
             }
 
             Text(
-                "FoldLinux Prototype v0.3 • ARM64",
+                "FoldLinux Prototype v0.4 • Ubuntu 24.04 ARM64 • XFCE",
                 color = Color(0xFF5F6977),
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 12.dp)
@@ -251,9 +357,19 @@ private fun FoldLinuxScreen(app: App) {
     }
 }
 
+private fun rootfsDir(app: App): File =
+    File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
+
 private fun isFoldLinuxInstalled(app: App): Boolean {
-    val rootfs = File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
+    val rootfs = rootfsDir(app)
     return rootfs.isDirectory && File(rootfs, "bin/sh").exists() && File(rootfs, "etc/passwd").exists()
+}
+
+private fun isDesktopInstalled(app: App): Boolean {
+    val rootfs = rootfsDir(app)
+    return File(rootfs, "root/$DESKTOP_MARKER").exists() &&
+        File(rootfs, "usr/bin/Xtigervnc").exists() &&
+        File(rootfs, "usr/bin/startxfce4").exists()
 }
 
 private fun queryDisplayName(context: android.content.Context, uri: Uri): String? {
@@ -304,7 +420,7 @@ private suspend fun installLocalRootfs(
     archive: File,
     onLine: suspend (String) -> Unit
 ): Int = withContext(Dispatchers.IO) {
-    val rootfs = File(app.prefixDir, "var/lib/pr/installed-rootfs/$DISTRO_ALIAS")
+    val rootfs = rootfsDir(app)
     try {
         if (rootfs.exists()) rootfs.deleteRecursively()
         if (!rootfs.mkdirs() && !rootfs.isDirectory) {
@@ -329,6 +445,8 @@ private suspend fun installLocalRootfs(
 
         File(rootfs, "tmp").mkdirs()
         File(rootfs, "root").mkdirs()
+        File(rootfs, "proc").mkdirs()
+        File(rootfs, "sys").mkdirs()
         val etc = File(rootfs, "etc").apply { mkdirs() }
         File(etc, "resolv.conf").writeText("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
         val hosts = File(etc, "hosts")
@@ -363,6 +481,7 @@ private suspend fun extractTarGz(
                     val entry: TarArchiveEntry = tar.nextTarEntry ?: break
                     val cleanName = entry.name.removePrefix("./")
                     if (cleanName.isBlank()) continue
+
                     val destPath = rootPath.resolve(cleanName).normalize()
                     if (!destPath.startsWith(rootPath)) {
                         throw SecurityException("Arşiv rootfs dışına çıkmaya çalıştı: ${entry.name}")
@@ -427,7 +546,7 @@ private fun applyMode(file: File, mode: Int) {
         Os.chmod(file.absolutePath, mode and 0x1FF)
     } catch (_: Throwable) {
         file.setReadable(true, false)
-        file.setWritable(true, true)
-        if (mode and 0x49 != 0) file.setExecutable(true, false)
+        file.setWritable((mode and 0x80) != 0, true)
+        if ((mode and 0x49) != 0) file.setExecutable(true, false)
     }
 }
