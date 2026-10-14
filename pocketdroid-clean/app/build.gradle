@@ -10,8 +10,8 @@ android {
         applicationId 'com.pocketdroid.vm'
         minSdk 26
         targetSdk 35
-        versionCode 80000
-        versionName '0.8-diagnostics'
+        versionCode 90000
+        versionName '0.9-isolated-qemu'
 
         ndk {
             abiFilters 'arm64-v8a'
