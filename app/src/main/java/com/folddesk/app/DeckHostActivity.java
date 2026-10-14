@@ -10,9 +10,12 @@ import android.view.Window;
 import android.widget.FrameLayout;
 
 public class DeckHostActivity extends Activity {
+    private static volatile DeckHostActivity instance;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instance = this;
         Window w = getWindow();
         w.setStatusBarColor(Color.BLACK);
         w.setNavigationBarColor(Color.BLACK);
@@ -34,18 +37,36 @@ public class DeckHostActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        instance = this;
         startDeckOverlay();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (instance == this) instance = null;
+        super.onDestroy();
     }
 
     private void startDeckOverlay() {
         if (Settings.canDrawOverlays(this)) {
             try { startService(new Intent(this, OverlayControlService.class)); } catch (Throwable ignored) { }
+            try { startService(new Intent(this, CloseButtonService.class)); } catch (Throwable ignored) { }
+        }
+    }
+
+    public static void closeDeckHost() {
+        DeckHostActivity a = instance;
+        if (a != null) {
+            a.runOnUiThread(() -> {
+                try { a.finishAndRemoveTask(); } catch (Throwable ignored) { a.finish(); }
+            });
         }
     }
 
     @Override
     public void onBackPressed() {
         try { stopService(new Intent(this, OverlayControlService.class)); } catch (Throwable ignored) { }
+        try { stopService(new Intent(this, CloseButtonService.class)); } catch (Throwable ignored) { }
         FoldDeskAccessibilityService.exitSplitScreen();
         finish();
     }
