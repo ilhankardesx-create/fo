@@ -116,6 +116,11 @@ jobs:
           a = a.replace('        checkLog();\n', '')
           activity.write_text(a)
 
+          app = Path('limbo/limbo-android-lib/src/main/java/com/max2idea/android/limbo/main/LimboApplication.java')
+          la = app.read_text()
+          la = la.replace('context.getClass().getPackage().getName()', 'context.getPackageName()')
+          app.write_text(la)
+
           gradle_file = Path('limbo/limbo-android-arm/build.gradle')
           g = gradle_file.read_text()
           g = g.replace('applicationId "com.limbo.emu.main.arm"', 'applicationId "com.pocketdroid.vm"')
@@ -135,12 +140,12 @@ jobs:
         run: |
           APK=$(find limbo/limbo-android-arm/build/outputs/apk -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Prototype-v0.4.apk
-          ls -lh PocketDroid-Prototype-v0.4.apk
+          cp "$APK" PocketDroid-Prototype-v0.5.apk
+          ls -lh PocketDroid-Prototype-v0.5.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Prototype-v0.4
-          path: PocketDroid-Prototype-v0.4.apk
+          name: PocketDroid-Prototype-v0.5
+          path: PocketDroid-Prototype-v0.5.apk
           retention-days: 30
