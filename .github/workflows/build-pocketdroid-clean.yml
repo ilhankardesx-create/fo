@@ -74,6 +74,28 @@ jobs:
           cp "$FW" pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
           ls -lh pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
 
+      - name: Patch clean runtime glue
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bridge = Path('pocketdroid-clean/app/src/main/cpp/qemu_bridge.cpp')
+          s = bridge.read_text()
+          s = s.replace('Java_com_pocketdroid_vm_QemuBridge_nativeStart(',
+                        'Java_com_pocketdroid_vm_QemuBridge_nativeStartInternal(')
+          s = s.replace('Java_com_pocketdroid_vm_QemuBridge_nativeStop(',
+                        'Java_com_pocketdroid_vm_QemuBridge_nativeStopInternal(')
+          bridge.write_text(s)
+
+          vnc = Path('pocketdroid-clean/app/src/main/java/com/pocketdroid/vm/VncView.java')
+          s = vnc.read_text()
+          old = '''        out.writeByte(32);\n        out.writeByte(24);\n        out.writeByte(1);\n        out.writeByte(1);'''
+          new = '''        out.writeByte(32);\n        out.writeByte(24);\n        out.writeByte(0);\n        out.writeByte(1);'''
+          if old not in s:
+              raise SystemExit('VNC pixel format block not found')
+          vnc.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Build clean PocketDroid
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
