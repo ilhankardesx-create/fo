@@ -22,23 +22,35 @@ import android.widget.Toast;
 import com.limbo.emu.main.arm.LimboEmuActivity;
 import com.max2idea.android.limbo.files.FileInstaller;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
- * PocketDroid's user-facing launcher.
- * The legacy emulator configuration UI remains hidden; PocketDroid owns
- * guest selection and applies ARM64 VM defaults automatically.
+ * PocketDroid user-facing launcher.
+ *
+ * v0.4 understands the ready-made LineageOS ARM64 UTM package. The user picks
+ * the ZIP once; PocketDroid extracts only the VM disks/EFI variables and then
+ * boots them with hidden QEMU settings.
  */
 public class PocketDroidActivity extends LimboEmuActivity {
 
-    private static final int PICK_GUEST_IMAGE = 4201;
+    private static final int PICK_LINEAGE_PACKAGE = 4201;
     private static final String PREFS = "pocketdroid";
-    private static final String PREF_IMAGE_PATH = "guest_image_path";
-    private static final String PREF_IMAGE_NAME = "guest_image_name";
-    private static final String VM_NAME = "PocketDroidARM64";
+    private static final String PREF_PACKAGE_NAME = "lineage_package_name";
+    private static final String PREF_READY = "lineage_vm_ready";
+    private static final String VM_NAME = "PocketDroidLineageARM64";
+
+    private static final String DISK_A = "vda.qcow2";
+    private static final String DISK_B = "vdb.qcow2";
+    private static final String EFI_VARS = "efi_vars.fd";
+    private static final String EFI_CODE = "AAVMF_CODE.fd";
 
     private SharedPreferences prefs;
     private TextView stateText;
@@ -46,9 +58,8 @@ public class PocketDroidActivity extends LimboEmuActivity {
     private Button primaryButton;
     private Button changeButton;
     private ProgressBar progress;
-    private String imagePath;
-    private String imageName;
-    private boolean copying;
+    private String packageName;
+    private boolean preparing;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -58,12 +69,26 @@ public class PocketDroidActivity extends LimboEmuActivity {
         MachineController.getInstance().removeOnEventListener(this);
 
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        imagePath = prefs.getString(PREF_IMAGE_PATH, null);
-        imageName = prefs.getString(PREF_IMAGE_NAME, null);
+        packageName = prefs.getString(PREF_PACKAGE_NAME, null);
 
         setupFullscreen();
         buildPocketDroidUi();
         refreshUi();
+    }
+
+    private File vmDir() {
+        return new File(getFilesDir(), "pocketdroid/lineage");
+    }
+
+    private File vmFile(String name) {
+        return new File(vmDir(), name);
+    }
+
+    private boolean isVmReady() {
+        return prefs.getBoolean(PREF_READY, false)
+                && vmFile(DISK_A).isFile()
+                && vmFile(DISK_B).isFile()
+                && vmFile(EFI_VARS).isFile();
     }
 
     private void setupFullscreen() {
@@ -109,7 +134,6 @@ public class PocketDroidActivity extends LimboEmuActivity {
         root.setBackgroundColor(Color.rgb(8, 10, 14));
 
         TextView badge = text("P", 34, Color.WHITE);
-        badge.setGravity(Gravity.CENTER);
         badge.setBackground(rounded(Color.rgb(43, 105, 255), 24));
         LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(74), dp(74));
         badgeParams.bottomMargin = dp(18);
@@ -166,19 +190,15 @@ public class PocketDroidActivity extends LimboEmuActivity {
         primaryButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (copying) return;
-                if (imagePath == null || !(new File(imagePath).exists())) {
-                    pickImage();
-                } else {
-                    startGuest();
-                }
+                if (preparing) return;
+                if (isVmReady()) startGuest(); else pickPackage();
             }
         });
         root.addView(primaryButton, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(60)));
 
         changeButton = new Button(this);
-        changeButton.setText("Android imajını değiştir");
+        changeButton.setText("Android paketini değiştir");
         changeButton.setTextColor(Color.rgb(175, 184, 205));
         changeButton.setTextSize(14);
         changeButton.setAllCaps(false);
@@ -186,13 +206,21 @@ public class PocketDroidActivity extends LimboEmuActivity {
         changeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (!copying) pickImage();
+                if (!preparing) pickPackage();
             }
         });
         LinearLayout.LayoutParams changeParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
         changeParams.topMargin = dp(8);
         root.addView(changeButton, changeParams);
+
+        TextView note = text("İlk kurulum biraz sürebilir. ZIP dosyasını açmana gerek yok.",
+                13, Color.rgb(103, 111, 129));
+        LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        noteParams.topMargin = dp(20);
+        root.addView(note, noteParams);
 
         badge.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
@@ -208,38 +236,40 @@ public class PocketDroidActivity extends LimboEmuActivity {
     }
 
     private void refreshUi() {
-        boolean hasImage = imagePath != null && new File(imagePath).exists();
-        progress.setVisibility(copying ? View.VISIBLE : View.GONE);
-        changeButton.setVisibility(hasImage && !copying ? View.VISIBLE : View.GONE);
-        primaryButton.setEnabled(!copying);
+        boolean ready = isVmReady();
+        progress.setVisibility(preparing ? View.VISIBLE : View.GONE);
+        changeButton.setVisibility(ready && !preparing ? View.VISIBLE : View.GONE);
+        primaryButton.setEnabled(!preparing);
 
-        if (copying) {
-            stateText.setText("Android imajı hazırlanıyor…");
-            fileText.setText(imageName == null ? "Lütfen bekle" : imageName);
+        if (preparing) {
+            stateText.setText("İkinci Android hazırlanıyor…");
+            if (fileText.getText() == null || fileText.getText().length() == 0) {
+                fileText.setText(packageName == null ? "LineageOS paketi açılıyor" : packageName);
+            }
             primaryButton.setText("Hazırlanıyor…");
-        } else if (hasImage) {
-            stateText.setText("ARM64 Android hazır");
-            fileText.setText(imageName == null ? new File(imagePath).getName() : imageName);
+        } else if (ready) {
+            stateText.setText("LineageOS ARM64 hazır");
+            fileText.setText(packageName == null ? "İkinci Android kuruldu" : packageName);
             primaryButton.setText("Android’i Başlat");
         } else {
-            stateText.setText("Henüz Android imajı seçilmedi");
-            fileText.setText("ARM64 QEMU imajını bir kez seçmen yeterli");
-            primaryButton.setText("Android İmajını Seç");
+            stateText.setText("Android paketi seçilmedi");
+            fileText.setText("İndirdiğin UTM-VM ... arm64only ZIP dosyasını seç");
+            primaryButton.setText("Android Paketini Seç");
         }
     }
 
-    private void pickImage() {
+    private void pickPackage() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(intent, PICK_GUEST_IMAGE);
+        startActivityForResult(intent, PICK_LINEAGE_PACKAGE);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == PICK_GUEST_IMAGE) {
+        if (requestCode == PICK_LINEAGE_PACKAGE) {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri uri = data.getData();
                 try {
@@ -247,7 +277,7 @@ public class PocketDroidActivity extends LimboEmuActivity {
                             Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 } catch (Exception ignored) {
                 }
-                copyGuestImage(uri);
+                prepareLineagePackage(uri);
             }
             return;
         }
@@ -267,93 +297,201 @@ public class PocketDroidActivity extends LimboEmuActivity {
         } finally {
             if (cursor != null) cursor.close();
         }
-        return "android-arm64.img";
+        return "LineageOS-ARM64.zip";
     }
 
-    private void copyGuestImage(final Uri uri) {
-        imageName = queryDisplayName(uri);
-        copying = true;
+    private void setProgressText(final String value) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                fileText.setText(value);
+            }
+        });
+    }
+
+    private void prepareLineagePackage(final Uri uri) {
+        packageName = queryDisplayName(uri);
+        if (packageName == null || !packageName.toLowerCase(Locale.US).endsWith(".zip")) {
+            Toast.makeText(this, "Lütfen indirdiğin UTM-VM ARM64 ZIP dosyasını seç.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        preparing = true;
+        fileText.setText(packageName);
         refreshUi();
 
         new Thread(new Runnable() {
             @Override
             public void run() {
-                InputStream input = null;
-                FileOutputStream output = null;
+                ZipInputStream zip = null;
                 try {
-                    File imageDir = new File(getFilesDir(), "pocketdroid");
-                    if (!imageDir.exists() && !imageDir.mkdirs()) {
-                        throw new Exception("İmaj klasörü oluşturulamadı");
+                    File dir = vmDir();
+                    if (!dir.exists() && !dir.mkdirs()) {
+                        throw new Exception("Sanal Android klasörü oluşturulamadı");
                     }
 
-                    String lower = imageName == null ? "" : imageName.toLowerCase();
-                    String ext = lower.endsWith(".iso") ? ".iso"
-                            : lower.endsWith(".qcow2") ? ".qcow2" : ".img";
-                    File target = new File(imageDir, "guest" + ext);
-                    File temp = new File(imageDir, "guest.tmp");
-                    if (temp.exists()) temp.delete();
+                    prefs.edit().putBoolean(PREF_READY, false).apply();
+                    deleteIfExists(vmFile(DISK_A));
+                    deleteIfExists(vmFile(DISK_B));
+                    deleteIfExists(vmFile(EFI_VARS));
+
+                    // Remove obsolete v0.3 single-image copies if present.
+                    File oldDir = new File(getFilesDir(), "pocketdroid");
+                    deleteIfExists(new File(oldDir, "guest.img"));
+                    deleteIfExists(new File(oldDir, "guest.qcow2"));
+                    deleteIfExists(new File(oldDir, "guest.iso"));
+                    deleteIfExists(new File(oldDir, "guest.tmp"));
 
                     ContentResolver resolver = getContentResolver();
-                    input = resolver.openInputStream(uri);
-                    if (input == null) throw new Exception("Dosya açılamadı");
-                    output = new FileOutputStream(temp, false);
+                    InputStream raw = resolver.openInputStream(uri);
+                    if (raw == null) throw new Exception("ZIP dosyası açılamadı");
+                    zip = new ZipInputStream(new BufferedInputStream(raw, 1024 * 1024));
 
-                    byte[] buffer = new byte[1024 * 1024];
-                    int read;
-                    while ((read = input.read(buffer)) != -1) {
-                        output.write(buffer, 0, read);
-                    }
-                    output.flush();
+                    boolean foundA = false;
+                    boolean foundB = false;
+                    boolean foundVars = false;
+                    ZipEntry entry;
+                    while ((entry = zip.getNextEntry()) != null) {
+                        if (entry.isDirectory()) {
+                            zip.closeEntry();
+                            continue;
+                        }
 
-                    if (target.exists() && !target.delete()) {
-                        throw new Exception("Eski imaj silinemedi");
-                    }
-                    if (!temp.renameTo(target)) {
-                        throw new Exception("İmaj kaydedilemedi");
+                        String name = entry.getName().replace('\\', '/');
+                        String lower = name.toLowerCase(Locale.US);
+                        File target = null;
+                        String label = null;
+
+                        if (lower.endsWith("/data/vda.qcow2") || lower.equals("vda.qcow2")) {
+                            target = vmFile(DISK_A);
+                            label = "Android sistem diski çıkarılıyor…";
+                            foundA = true;
+                        } else if (lower.endsWith("/data/vdb.qcow2") || lower.equals("vdb.qcow2")) {
+                            target = vmFile(DISK_B);
+                            label = "Android veri diski çıkarılıyor…";
+                            foundB = true;
+                        } else if (lower.endsWith("/data/efi_vars.fd") || lower.equals("efi_vars.fd")) {
+                            target = vmFile(EFI_VARS);
+                            label = "Android boot ayarları hazırlanıyor…";
+                            foundVars = true;
+                        }
+
+                        if (target != null) {
+                            setProgressText(label);
+                            extractCurrentEntry(zip, target);
+                        }
+                        zip.closeEntry();
                     }
 
-                    imagePath = target.getAbsolutePath();
+                    if (!foundA || !foundB || !foundVars
+                            || !vmFile(DISK_A).isFile()
+                            || !vmFile(DISK_B).isFile()
+                            || !vmFile(EFI_VARS).isFile()) {
+                        throw new Exception("Bu ZIP uygun LineageOS UTM ARM64 paketi değil");
+                    }
+
+                    setProgressText("ARM64 UEFI hazırlanıyor…");
+                    ensureFirmware();
+
                     prefs.edit()
-                            .putString(PREF_IMAGE_PATH, imagePath)
-                            .putString(PREF_IMAGE_NAME, imageName)
+                            .putString(PREF_PACKAGE_NAME, packageName)
+                            .putBoolean(PREF_READY, true)
                             .apply();
 
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            copying = false;
+                            preparing = false;
                             refreshUi();
                             Toast.makeText(PocketDroidActivity.this,
-                                    "Android imajı hazır", Toast.LENGTH_SHORT).show();
+                                    "İkinci Android hazır 😁", Toast.LENGTH_LONG).show();
                         }
                     });
                 } catch (final Exception ex) {
+                    prefs.edit().putBoolean(PREF_READY, false).apply();
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            copying = false;
-                            imagePath = null;
+                            preparing = false;
                             refreshUi();
                             Toast.makeText(PocketDroidActivity.this,
-                                    "İmaj hazırlanamadı: " + ex.getMessage(), Toast.LENGTH_LONG).show();
+                                    "Kurulum tamamlanamadı: " + ex.getMessage(), Toast.LENGTH_LONG).show();
                         }
                     });
                 } finally {
-                    try { if (input != null) input.close(); } catch (Exception ignored) {}
-                    try { if (output != null) output.close(); } catch (Exception ignored) {}
+                    try { if (zip != null) zip.close(); } catch (Exception ignored) {}
                 }
             }
         }).start();
     }
 
+    private void deleteIfExists(File file) {
+        if (file.exists()) file.delete();
+    }
+
+    private void extractCurrentEntry(ZipInputStream zip, File target) throws Exception {
+        File temp = new File(target.getParentFile(), target.getName() + ".tmp");
+        deleteIfExists(temp);
+        BufferedOutputStream output = null;
+        try {
+            output = new BufferedOutputStream(new FileOutputStream(temp, false), 1024 * 1024);
+            byte[] buffer = new byte[1024 * 1024];
+            int read;
+            while ((read = zip.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+        } finally {
+            if (output != null) output.close();
+        }
+
+        deleteIfExists(target);
+        if (!temp.renameTo(target)) {
+            deleteIfExists(temp);
+            throw new Exception(target.getName() + " kaydedilemedi");
+        }
+    }
+
+    private File ensureFirmware() throws Exception {
+        File firmware = vmFile(EFI_CODE);
+        if (firmware.isFile() && firmware.length() > 0) return firmware;
+
+        InputStream input = null;
+        BufferedOutputStream output = null;
+        File temp = new File(vmDir(), EFI_CODE + ".tmp");
+        try {
+            input = getAssets().open("pocketdroid/" + EFI_CODE);
+            output = new BufferedOutputStream(new FileOutputStream(temp, false), 1024 * 1024);
+            byte[] buffer = new byte[1024 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            output.flush();
+        } finally {
+            if (input != null) input.close();
+            if (output != null) output.close();
+        }
+        deleteIfExists(firmware);
+        if (!temp.renameTo(firmware)) {
+            deleteIfExists(temp);
+            throw new Exception("ARM64 UEFI hazırlanamadı");
+        }
+        return firmware;
+    }
+
     private void startGuest() {
         try {
-            File guest = new File(imagePath);
-            if (!guest.exists()) {
-                imagePath = null;
+            if (!isVmReady()) {
                 refreshUi();
                 return;
             }
+
+            File firmware = ensureFirmware();
+            File vars = vmFile(EFI_VARS);
+            File vda = vmFile(DISK_A);
+            File vdb = vmFile(DISK_B);
 
             setupNativeLibs();
 
@@ -368,10 +506,11 @@ public class PocketDroidActivity extends LimboEmuActivity {
             Machine machine = controller.getMachine();
             if (machine == null) throw new Exception("Sanal makine oluşturulamadı");
 
-            // ARM64 guest defaults for QEMU's generic virt board.
-            machine.setMemory(3072);
+            // Mirrors the platform-independent QEMU recipe published by the
+            // LineageOS QEMU project, adapted to Limbo's hidden machine model.
+            machine.setMemory(2048);
             machine.setCpuNum(2);
-            machine.setCpu("cortex-a72");
+            machine.setCpu("max");
             machine.setMachineType("virt");
             machine.setEnableKVM(0);
             machine.setEnableMTTCG(1);
@@ -379,26 +518,30 @@ public class PocketDroidActivity extends LimboEmuActivity {
             machine.setVga("virtio-gpu-pci");
             machine.setNetwork("user");
             machine.setNetworkCard("virtio-net-pci");
+            machine.setHostFwd("tcp:5555:5555,tcp:5554:5554");
 
-            String lower = guest.getName().toLowerCase();
-            if (lower.endsWith(".iso")) {
-                machine.setEnableCDROM(true);
-                machine.setCdImagePath(guest.getAbsolutePath());
-                machine.setHdaImagePath(null);
-                machine.setBootDevice("d");
-            } else {
-                machine.setEnableCDROM(false);
-                machine.setCdImagePath(null);
-                machine.setHdaImagePath(guest.getAbsolutePath());
-                machine.setBootDevice("c");
-            }
+            machine.setEnableCDROM(false);
+            machine.setCdImagePath(null);
+            machine.setHdaImagePath(vda.getAbsolutePath());
+            machine.setHdaInterface("virtio");
+            machine.setHdbImagePath(vdb.getAbsolutePath());
+            machine.setHdbInterface("virtio");
+            machine.setHdcImagePath(null);
+            machine.setHddImagePath(null);
+            machine.setBootDevice("Default");
+
+            String extra = "-drive if=pflash,unit=0,file=" + firmware.getAbsolutePath()
+                    + ",format=raw,readonly=on"
+                    + " -drive if=pflash,unit=1,file=" + vars.getAbsolutePath()
+                    + ",format=raw";
+            machine.setExtraParams(extra);
 
             File saveDir = new File(controller.getMachineSaveDir());
             if (!saveDir.exists()) saveDir.mkdirs();
             FileInstaller.installFiles(this, false);
 
             stateText.setText("Android başlatılıyor…");
-            fileText.setText("ARM64 sanal makine hazırlanıyor");
+            fileText.setText("LineageOS ARM64 boot ediliyor");
             primaryButton.setEnabled(false);
             startSDL();
         } catch (Exception ex) {
@@ -410,7 +553,7 @@ public class PocketDroidActivity extends LimboEmuActivity {
     @Override
     public void onResume() {
         super.onResume();
-        if (primaryButton != null && !copying) {
+        if (primaryButton != null && !preparing) {
             primaryButton.setEnabled(true);
             refreshUi();
         }
