@@ -41,6 +41,23 @@ static std::string parentDir(const std::string& path) {
     return path.substr(0, pos);
 }
 
+static std::string stagePath(const std::string& logFile) {
+    return parentDir(logFile) + "/crash-stage.txt";
+}
+
+static void writeStage(const std::string& logFile, const char* stage) {
+    FILE* f = fopen(stagePath(logFile).c_str(), "w");
+    if (!f) return;
+    fprintf(f, "%s\n", stage);
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+}
+
+static void clearStage(const std::string& logFile) {
+    unlink(stagePath(logFile).c_str());
+}
+
 static void restoreStdStreams() {
     if (g_saved_stdout >= 0) {
         dup2(g_saved_stdout, STDOUT_FILENO);
@@ -87,23 +104,24 @@ static void* loadGlobal(const std::string& dir, const char* name, bool required)
     return h;
 }
 
+static bool loadRuntimeDependencies(const std::string& nativeDir) {
+    if (!g_dep_handles.empty()) return g_compat != nullptr;
+    g_compat = loadGlobal(nativeDir, "libcompat-limbo.so", true);
+    if (!g_compat) return false;
+    if (!loadGlobal(nativeDir, "libcompat-musl.so", true)) return false;
+    if (!loadGlobal(nativeDir, "libglib-2.0.so", true)) return false;
+    if (!loadGlobal(nativeDir, "libpixman-1.so", true)) return false;
+    loadGlobal(nativeDir, "libcompat-SDL2-addons.so", false);
+    loadGlobal(nativeDir, "libSDL2.so", false);
+    loadGlobal(nativeDir, "libcompat-SDL2-ext.so", false);
+    return true;
+}
+
 static bool prepareAndroidRuntime(JNIEnv* env, jobject thiz,
                                   const std::string& nativeDir,
                                   const std::string& storageDir,
                                   const std::string& baseDir) {
-    // Limbo's QEMU Android build expects these compatibility libraries to be
-    // globally visible before the QEMU shared object is opened. We only reuse
-    // this low-level Android compatibility/runtime layer, not Limbo's UI/VM DB.
-    if (g_dep_handles.empty()) {
-        g_compat = loadGlobal(nativeDir, "libcompat-limbo.so", true);
-        if (!g_compat) return false;
-        loadGlobal(nativeDir, "libcompat-musl.so", true);
-        loadGlobal(nativeDir, "libglib-2.0.so", true);
-        loadGlobal(nativeDir, "libpixman-1.so", true);
-        loadGlobal(nativeDir, "libcompat-SDL2-addons.so", false);
-        loadGlobal(nativeDir, "libSDL2.so", false);
-        loadGlobal(nativeDir, "libcompat-SDL2-ext.so", false);
-    }
+    if (!loadRuntimeDependencies(nativeDir)) return false;
 
     if (!g_jni_ready) {
         using set_jni_t = void (*)(JNIEnv*, jobject, jclass, const char*, const char*);
@@ -126,7 +144,93 @@ static bool prepareAndroidRuntime(JNIEnv* env, jobject thiz,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketdroid_vm_QemuBridge_nativeStart(
+Java_com_pocketdroid_vm_QemuBridge_nativeProbeInternal(
+        JNIEnv* env, jobject,
+        jstring qemuLibPath,
+        jstring logPath) {
+
+    const std::string libPath = jstringToString(env, qemuLibPath);
+    const std::string logFile = jstringToString(env, logPath);
+    const std::string nativeDir = parentDir(libPath);
+
+    redirectStdStreams(logFile);
+    writeStage(logFile, "probe-runtime-dependencies");
+    fprintf(stderr, "[PocketDroid] Güvenli motor testi başladı\n");
+    fprintf(stderr, "[PocketDroid] Native dizin: %s\n", nativeDir.c_str());
+
+    if (!loadRuntimeDependencies(nativeDir)) {
+        std::string msg = "PROBE_FAIL: runtime bağımlılıkları yüklenemedi";
+        fprintf(stderr, "[PocketDroid] %s\n", msg.c_str());
+        restoreStdStreams();
+        return result(env, msg);
+    }
+
+    writeStage(logFile, "probe-qemu-dlopen");
+    dlerror();
+    void* probe = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (!probe) {
+        const char* e = dlerror();
+        std::string msg = "PROBE_FAIL: QEMU dlopen: ";
+        msg += e ? e : "bilinmeyen hata";
+        fprintf(stderr, "[PocketDroid] %s\n", msg.c_str());
+        restoreStdStreams();
+        return result(env, msg);
+    }
+    fprintf(stderr, "[PocketDroid] ✓ libqemu-system-aarch64.so açıldı\n");
+
+    writeStage(logFile, "probe-qemu-symbols");
+    dlerror();
+    void* init = dlsym(probe, "qemu_init");
+    const char* initErr = dlerror();
+    if (!init || initErr) {
+        dlerror();
+        init = dlsym(probe, "main");
+        const char* mainErr = dlerror();
+        if (!init || mainErr) {
+            std::string msg = "PROBE_FAIL: qemu_init/main bulunamadı";
+            fprintf(stderr, "[PocketDroid] %s\n", msg.c_str());
+            dlclose(probe);
+            restoreStdStreams();
+            return result(env, msg);
+        }
+        fprintf(stderr, "[PocketDroid] ✓ legacy main sembolü bulundu\n");
+    } else {
+        fprintf(stderr, "[PocketDroid] ✓ qemu_init sembolü bulundu\n");
+        dlerror();
+        void* loop = dlsym(probe, "qemu_main_loop");
+        const char* loopErr = dlerror();
+        dlerror();
+        void* cleanup = dlsym(probe, "qemu_cleanup");
+        const char* cleanupErr = dlerror();
+        if (!loop || loopErr || !cleanup || cleanupErr) {
+            std::string msg = "PROBE_FAIL: qemu_main_loop/qemu_cleanup eksik";
+            fprintf(stderr, "[PocketDroid] %s\n", msg.c_str());
+            dlclose(probe);
+            restoreStdStreams();
+            return result(env, msg);
+        }
+        fprintf(stderr, "[PocketDroid] ✓ qemu_main_loop + qemu_cleanup bulundu\n");
+    }
+
+    dlerror();
+    void* shutdown = dlsym(probe, "qemu_system_shutdown_request");
+    const char* shutdownErr = dlerror();
+    if (shutdown && !shutdownErr) {
+        fprintf(stderr, "[PocketDroid] ✓ shutdown sembolü bulundu\n");
+    } else {
+        fprintf(stderr, "[PocketDroid] ! shutdown sembolü yok (boot testi için kritik değil)\n");
+    }
+
+    dlclose(probe);
+    clearStage(logFile);
+    fprintf(stderr, "[PocketDroid] MOTOR TESTİ BAŞARILI\n");
+    fflush(stderr);
+    restoreStdStreams();
+    return result(env, "PROBE_OK");
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_pocketdroid_vm_QemuBridge_nativeStartInternal(
         JNIEnv* env, jobject thiz,
         jstring qemuLibPath,
         jstring logPath,
@@ -143,6 +247,7 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
     const std::string nativeDir = parentDir(libPath);
 
     redirectStdStreams(logFile);
+    writeStage(logFile, "runtime-prepare");
     fprintf(stderr, "[PocketDroid] Temiz motor başlatılıyor\n");
     fprintf(stderr, "[PocketDroid] Native dizin: %s\n", nativeDir.c_str());
 
@@ -152,8 +257,10 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
         restoreStdStreams();
         return result(env, msg);
     }
+    writeStage(logFile, "runtime-ready");
 
     fprintf(stderr, "[PocketDroid] QEMU motoru yükleniyor: %s\n", libPath.c_str());
+    writeStage(logFile, "qemu-dlopen");
     dlerror();
     g_qemu = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
     if (!g_qemu) {
@@ -164,6 +271,7 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
         restoreStdStreams();
         return result(env, msg);
     }
+    writeStage(logFile, "qemu-loaded");
 
     jsize argcJava = env->GetArrayLength(javaArgs);
     int argc = static_cast<int>(argcJava);
@@ -202,10 +310,13 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
             finalMessage = "QEMU ana döngü sembolleri bulunamadı";
             fprintf(stderr, "[PocketDroid] %s\n", finalMessage.c_str());
         } else {
+            writeStage(logFile, "qemu-init");
             fprintf(stderr, "[PocketDroid] qemu_init() çağrılıyor\n");
             qemu_init(argc, argv.data(), nullptr);
+            writeStage(logFile, "qemu-main-loop");
             fprintf(stderr, "[PocketDroid] qemu_main_loop() başladı\n");
             qemu_main_loop();
+            writeStage(logFile, "qemu-cleanup");
             fprintf(stderr, "[PocketDroid] QEMU ana döngüden çıktı\n");
             qemu_cleanup();
         }
@@ -218,6 +329,7 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
             finalMessage += mainErr ? mainErr : "qemu_init/main yok";
             fprintf(stderr, "[PocketDroid] %s\n", finalMessage.c_str());
         } else {
+            writeStage(logFile, "qemu-legacy-main");
             fprintf(stderr, "[PocketDroid] legacy main() çağrılıyor\n");
             qemu_main(argc, argv.data(), nullptr);
         }
@@ -228,6 +340,7 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
         dlclose(g_qemu);
         g_qemu = nullptr;
     }
+    clearStage(logFile);
     fflush(stdout);
     fflush(stderr);
     restoreStdStreams();
@@ -235,7 +348,7 @@ Java_com_pocketdroid_vm_QemuBridge_nativeStart(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_pocketdroid_vm_QemuBridge_nativeStop(JNIEnv* env, jobject) {
+Java_com_pocketdroid_vm_QemuBridge_nativeStopInternal(JNIEnv* env, jobject) {
     if (!g_qemu || !g_running) return result(env, "QEMU çalışmıyor");
 
     using stop_t = void (*)(int);
