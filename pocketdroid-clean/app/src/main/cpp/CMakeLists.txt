@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(pocketdroid_bridge)
+
+add_library(pocketdroid_bridge SHARED qemu_bridge.cpp)
+
+find_library(log-lib log)
+find_library(dl-lib dl)
+
+target_link_libraries(pocketdroid_bridge ${log-lib} ${dl-lib})
