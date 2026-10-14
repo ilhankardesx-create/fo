@@ -39,6 +39,11 @@ jobs:
           distribution: temurin
           java-version: '11'
 
+      - name: Set up Gradle 7.0.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '7.0.2'
+
       - name: Prepare stable debug signing key
         run: |
           mkdir -p "$HOME/.android"
@@ -83,12 +88,12 @@ jobs:
           c = c.replace('public static final String APP_NAME = "Limbo Emulator";', 'public static final String APP_NAME = "PocketDroid";')
           config.write_text(c)
 
-          gradle = Path('limbo/limbo-android-x86/build.gradle')
-          g = gradle.read_text()
+          gradle_file = Path('limbo/limbo-android-x86/build.gradle')
+          g = gradle_file.read_text()
           g = g.replace('applicationId "com.limbo.emu.main"', 'applicationId "com.pocketdroid.vm"')
           g = g.replace('applicationId "com.limbo.emu.main.x86"', 'applicationId "com.pocketdroid.vm"')
           g = g.replace('ndk { abiFilters "armeabi-v7a","arm64-v8a", "x86", "x86_64" }', 'ndk { abiFilters "arm64-v8a" }')
-          gradle.write_text(g)
+          gradle_file.write_text(g)
 
           root = Path('limbo/build.gradle')
           r = root.read_text().replace('jcenter()', 'mavenCentral()')
@@ -97,13 +102,13 @@ jobs:
 
       - name: Build PocketDroid APK
         working-directory: limbo
-        run: |
-          chmod +x gradlew
-          ./gradlew :limbo-android-x86:assembleDebug --stacktrace
+        run: gradle :limbo-android-x86:assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
-          cp limbo/limbo-android-x86/build/outputs/apk/debug/limbo-android-x86-debug.apk PocketDroid-Prototype-v0.1.apk
+          APK=$(find limbo/limbo-android-x86/build/outputs/apk -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" PocketDroid-Prototype-v0.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
