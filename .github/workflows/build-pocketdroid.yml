@@ -60,35 +60,36 @@ jobs:
         run: |
           git clone --depth 1 --branch v6.0.1-LimboEmulator https://github.com/limboemu/limbo.git limbo
 
-      - name: Import ARM64 QEMU binaries
+      - name: Import ARM64 QEMU guest binaries
         run: |
           curl -fL --retry 3 \
-            https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-x86-6.0.1-qemu-5.1.0.apk \
-            -o /tmp/limbo-engine.apk
+            https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk \
+            -o /tmp/limbo-arm-engine.apk
           mkdir -p /tmp/engine-libs
-          unzip -q /tmp/limbo-engine.apk 'lib/arm64-v8a/*' -d /tmp/engine-libs
-          mkdir -p limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a
-          cp /tmp/engine-libs/lib/arm64-v8a/*.so limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a/
-          echo "Imported native libraries:"
-          ls -lh limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a/
+          unzip -q /tmp/limbo-arm-engine.apk 'lib/arm64-v8a/*' -d /tmp/engine-libs
+          mkdir -p limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a
+          cp /tmp/engine-libs/lib/arm64-v8a/*.so limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
+          echo "Imported ARM guest native libraries:"
+          ls -lh limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
+          test -f limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
 
       - name: Overlay PocketDroid UI
         run: |
-          mkdir -p limbo/limbo-android-x86/src/main/java/com/max2idea/android/limbo/machine
+          mkdir -p limbo/limbo-android-arm/src/main/java/com/max2idea/android/limbo/machine
           cp pocketdroid/PocketDroidActivity.java \
-            limbo/limbo-android-x86/src/main/java/com/max2idea/android/limbo/machine/PocketDroidActivity.java
+            limbo/limbo-android-arm/src/main/java/com/max2idea/android/limbo/machine/PocketDroidActivity.java
           cp pocketdroid/AndroidManifest.xml \
-            limbo/limbo-android-x86/src/main/AndroidManifest.xml
+            limbo/limbo-android-arm/src/main/AndroidManifest.xml
 
       - name: Brand and tune PocketDroid
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          strings = Path('limbo/limbo-android-x86/src/main/res/values/strings.xml')
+          strings = Path('limbo/limbo-android-arm/src/main/res/values/strings.xml')
           s = strings.read_text()
-          s = s.replace('Limbo x86 PC Emulator', 'PocketDroid')
-          s = s.replace('Limbo x86', 'PocketDroid')
+          s = s.replace('Limbo ARM Emulator', 'PocketDroid')
+          s = s.replace('Limbo ARM', 'PocketDroid')
           strings.write_text(s)
 
           config = Path('limbo/limbo-android-lib/src/main/java/com/max2idea/android/limbo/main/Config.java')
@@ -97,7 +98,6 @@ jobs:
                         'public static final String APP_NAME = "PocketDroid";')
           config.write_text(c)
 
-          # PocketDroid owns onboarding. Suppress the legacy license/update/log popups.
           activity = Path('limbo/limbo-android-lib/src/main/java/com/max2idea/android/limbo/main/LimboActivity.java')
           a = activity.read_text()
           a = a.replace('        checkFirstLaunch();\n', '')
@@ -105,32 +105,30 @@ jobs:
           a = a.replace('        checkLog();\n', '')
           activity.write_text(a)
 
-          gradle_file = Path('limbo/limbo-android-x86/build.gradle')
+          gradle_file = Path('limbo/limbo-android-arm/build.gradle')
           g = gradle_file.read_text()
-          g = g.replace('applicationId "com.limbo.emu.main"', 'applicationId "com.pocketdroid.vm"')
-          g = g.replace('applicationId "com.limbo.emu.main.x86"', 'applicationId "com.pocketdroid.vm"')
+          g = g.replace('applicationId "com.limbo.emu.main.arm"', 'applicationId "com.pocketdroid.vm"')
           g = g.replace('ndk { abiFilters "armeabi-v7a","arm64-v8a", "x86", "x86_64" }',
                         'ndk { abiFilters "arm64-v8a" }')
           gradle_file.write_text(g)
 
           root = Path('limbo/build.gradle')
-          r = root.read_text().replace('jcenter()', 'mavenCentral()')
-          root.write_text(r)
+          root.write_text(root.read_text().replace('jcenter()', 'mavenCentral()'))
           PY
 
       - name: Build PocketDroid APK
         working-directory: limbo
-        run: gradle :limbo-android-x86:assembleDebug --stacktrace
+        run: gradle :limbo-android-arm:assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
-          APK=$(find limbo/limbo-android-x86/build/outputs/apk -name '*.apk' | head -n 1)
+          APK=$(find limbo/limbo-android-arm/build/outputs/apk -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Prototype-v0.2.apk
+          cp "$APK" PocketDroid-Prototype-v0.3.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Prototype-v0.2
-          path: PocketDroid-Prototype-v0.2.apk
+          name: PocketDroid-Prototype-v0.3
+          path: PocketDroid-Prototype-v0.3.apk
           retention-days: 30
