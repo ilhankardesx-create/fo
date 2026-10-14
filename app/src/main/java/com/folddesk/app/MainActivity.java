@@ -17,6 +17,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -34,6 +35,7 @@ import androidx.window.layout.FoldingFeature;
 import androidx.window.layout.WindowInfoTracker;
 import androidx.window.layout.WindowLayoutInfo;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -52,6 +54,7 @@ public class MainActivity extends Activity {
     private View hingeBar;
     private LinearLayout root;
     private TextView cursor;
+    private GridView appGrid;
 
     private WindowInfoTrackerCallbackAdapter windowInfoTracker;
     private final LayoutStateChangeCallback layoutCallback = new LayoutStateChangeCallback();
@@ -181,7 +184,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(42)
         ));
 
-        GridView appGrid = new GridView(this);
+        appGrid = new GridView(this);
         appGrid.setNumColumns(6);
         appGrid.setVerticalSpacing(dp(8));
         appGrid.setHorizontalSpacing(dp(8));
@@ -311,13 +314,13 @@ public class MainActivity extends Activity {
         Button left = new Button(this);
         left.setText("L");
         left.setTextSize(11f);
-        left.setOnClickListener(v -> pulseCursor("Sol tık"));
+        left.setOnClickListener(v -> clickAtCursor());
         clicks.addView(left, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         Button right = new Button(this);
         right.setText("R");
         right.setTextSize(11f);
-        right.setOnClickListener(v -> Toast.makeText(this, "Sağ tık • prototip", Toast.LENGTH_SHORT).show());
+        right.setOnClickListener(v -> Toast.makeText(this, "Sağ tık • sonraki sürüm", Toast.LENGTH_SHORT).show());
         clicks.addView(right, new LinearLayout.LayoutParams(0, dp(42), 1f));
 
         panel.addView(clicks, new LinearLayout.LayoutParams(
@@ -392,17 +395,38 @@ public class MainActivity extends Activity {
             return;
         }
 
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
-                Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT |
-                Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+        int width = Math.max(1, topArea.getWidth());
+        int height = Math.max(1, topArea.getHeight());
+        String appName = info.loadLabel(packageManager).toString();
+
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
 
         try {
-            int width = Math.max(1, topArea.getWidth());
-            int height = Math.max(1, topArea.getHeight());
             ActivityOptions options = ActivityOptions.makeBasic();
             options.setLaunchBounds(new Rect(0, 0, width, height));
+
+            // Samsung/Android freeform window mode. This is a best-effort prototype:
+            // some devices expose the non-SDK method, others block it and fall back below.
+            try {
+                Method method = ActivityOptions.class.getDeclaredMethod("setLaunchWindowingMode", int.class);
+                method.setAccessible(true);
+                method.invoke(options, 5); // WINDOWING_MODE_FREEFORM
+            } catch (Throwable ignored) {
+            }
+
+            modeLabel.setText("APP STAGE • " + appName.toUpperCase(Locale.getDefault()));
             startActivity(intent, options.toBundle());
-        } catch (Exception e) {
+            return;
+        } catch (Throwable ignored) {
+        }
+
+        // Fallback: ask Android to keep the new task adjacent when multi-window is available.
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT);
+            ActivityOptions adjacent = ActivityOptions.makeBasic();
+            adjacent.setLaunchBounds(new Rect(0, 0, width, height));
+            startActivity(intent, adjacent.toBundle());
+        } catch (Throwable e) {
             try {
                 startActivity(intent);
             } catch (Exception ignored) {
@@ -424,6 +448,30 @@ public class MainActivity extends Activity {
         cursorY = Math.max(0, Math.min(cursorY, maxY));
         cursor.setX(cursorX);
         cursor.setY(cursorY);
+    }
+
+    private void clickAtCursor() {
+        pulseCursor("Sol tık");
+        if (appGrid == null || appGrid.getVisibility() != View.VISIBLE) return;
+
+        int[] topLocation = new int[2];
+        int[] gridLocation = new int[2];
+        topArea.getLocationOnScreen(topLocation);
+        appGrid.getLocationOnScreen(gridLocation);
+
+        float screenX = topLocation[0] + cursorX + (cursor.getWidth() / 2f);
+        float screenY = topLocation[1] + cursorY + (cursor.getHeight() / 2f);
+        int localX = Math.round(screenX - gridLocation[0]);
+        int localY = Math.round(screenY - gridLocation[1]);
+
+        if (localX < 0 || localY < 0 || localX >= appGrid.getWidth() || localY >= appGrid.getHeight()) {
+            return;
+        }
+
+        int position = appGrid.pointToPosition(localX, localY);
+        if (position != AdapterView.INVALID_POSITION && position < visibleApps.size()) {
+            launchApp(visibleApps.get(position));
+        }
     }
 
     private void pulseCursor(String message) {
@@ -584,7 +632,7 @@ public class MainActivity extends Activity {
                     return true;
                 case MotionEvent.ACTION_UP:
                     float travel = Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY);
-                    if (travel < dp(12)) pulseCursor("Touchpad tık");
+                    if (travel < dp(12)) clickAtCursor();
                     return true;
                 default:
                     return true;
