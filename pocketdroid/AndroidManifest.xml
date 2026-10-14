@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.limbo.emu.main"
-    android:versionCode="60002"
-    android:versionName="0.2-prototype">
+    package="com.limbo.emu.main.arm"
+    android:versionCode="60003"
+    android:versionName="0.3-prototype">
 
     <application
         tools:replace="android:label"
@@ -21,9 +21,8 @@
             </intent-filter>
         </activity>
 
-        <!-- Hidden diagnostics only. Normal users never see the legacy Limbo panel. -->
         <activity
-            android:name="LimboEmuActivity"
+            android:name="com.limbo.emu.main.arm.LimboEmuActivity"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize"
             android:label="PocketDroid Motor Tanılama"
             android:launchMode="singleTop"
