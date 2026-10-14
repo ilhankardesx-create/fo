@@ -12,12 +12,7 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Runs QEMU in an isolated Android process.
- *
- * The actual VM bootstrap deliberately goes through Limbo's own liblimbo JNI
- * bridge because libqemu-system-aarch64.so is the Limbo 6.0.1 runtime. This
- * keeps the Java/native ABI and QEMU initialization path identical to the
- * environment the binary was built and tested for.
+ * Runs the Limbo ARM64 QEMU runtime in PocketDroid's isolated :qemu process.
  */
 public class QemuProcessService extends Service {
     private volatile boolean started;
@@ -36,6 +31,22 @@ public class QemuProcessService extends Service {
 
         writeState(statePath, "SERVICE_STARTED pid=" + Process.myPid());
 
+        // Limbo 6.0.1 explicitly initializes its native libraries from the
+        // Android main thread before starting the QEMU worker. Do the same in
+        // this process. Loading them from the worker can make QEMU fail later.
+        try {
+            VMExecutor.ensureNativeLibrariesLoaded();
+            writeState(statePath, "LIMBO_LIBS_READY pid=" + Process.myPid());
+        } catch (Throwable t) {
+            String message = t.getMessage();
+            writeState(statePath,
+                    "JAVA_ERROR: native load: " + t.getClass().getSimpleName()
+                            + (message == null ? "" : ": " + message));
+            started = false;
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
+
         Thread t = new Thread(() -> {
             try {
                 File qemu = qemuLibPath == null ? null : new File(qemuLibPath);
@@ -43,21 +54,22 @@ public class QemuProcessService extends Service {
                     throw new IllegalStateException("QEMU kütüphanesi bulunamadı: " + qemuLibPath);
                 }
 
-                // Class initialization loads Limbo's compatibility libraries,
-                // liblimbo.so and the ARM64 QEMU runtime in the original order.
                 vmExecutor = new VMExecutor();
                 writeState(statePath, "LIMBO_BRIDGE_READY pid=" + Process.myPid());
 
                 Object[] nativeArgs = args == null ? new String[0] : args;
                 writeState(statePath, "NATIVE_ENTER pid=" + Process.myPid());
 
-                // -1 is Limbo's default SDL scale hint. PocketDroid uses VNC,
-                // but the global must still be initialized by liblimbo before
-                // qemu_init() just like in the original Limbo app.
+                // This exactly matches Limbo 6.0.1's JNI ABI:
+                // storageDir, baseDir, library filename, full library path,
+                // SDL scale hint, argv[]. liblimbo then performs setup_jni(),
+                // initializes the Limbo QEMU globals, calls qemu_init(), runs
+                // qemu_main_loop() and finally qemu_cleanup().
                 String result = vmExecutor.start(
                         storageDir,
                         baseDir,
-                        qemuLibPath,
+                        qemu.getName(),
+                        qemu.getAbsolutePath(),
                         -1,
                         nativeArgs);
 
