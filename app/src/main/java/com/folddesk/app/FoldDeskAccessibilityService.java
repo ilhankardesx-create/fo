@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 
 public class FoldDeskAccessibilityService extends AccessibilityService {
     private static volatile FoldDeskAccessibilityService instance;
+    private static volatile boolean splitSessionActive;
 
     @Override
     protected void onServiceConnected() {
@@ -43,7 +44,38 @@ public class FoldDeskAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         if (instance == this) instance = null;
+        splitSessionActive = false;
         super.onDestroy();
+    }
+
+    public static boolean enterSplitScreen() {
+        FoldDeskAccessibilityService s = instance;
+        if (s == null) return false;
+        if (splitSessionActive) return true;
+        try {
+            boolean ok = s.performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+            if (ok) splitSessionActive = true;
+            return ok;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    public static boolean exitSplitScreen() {
+        FoldDeskAccessibilityService s = instance;
+        if (s == null) {
+            splitSessionActive = false;
+            return false;
+        }
+        if (!splitSessionActive) return true;
+        try {
+            boolean ok = s.performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN);
+            splitSessionActive = false;
+            return ok;
+        } catch (Throwable ignored) {
+            splitSessionActive = false;
+            return false;
+        }
     }
 
     public static boolean tap(float x, float y) {
