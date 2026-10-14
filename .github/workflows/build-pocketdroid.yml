@@ -17,11 +17,11 @@ jobs:
       - name: Checkout PocketDroid branch
         uses: actions/checkout@v5
 
-      - name: Set up Java 11
+      - name: Set up Java 17 for Android SDK
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -30,6 +30,12 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-29" "build-tools;29.0.3"
+
+      - name: Set up Java 11 for legacy emulator build
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '11'
 
       - name: Prepare stable debug signing key
         run: |
