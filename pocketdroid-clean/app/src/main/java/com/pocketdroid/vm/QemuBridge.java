@@ -16,6 +16,10 @@ public final class QemuBridge {
         return INSTANCE;
     }
 
+    public String probe(String qemuLibPath, String logPath) {
+        return nativeProbeInternal(qemuLibPath, logPath);
+    }
+
     public String start(String qemuLibPath, String logPath,
                         String storageDir, String baseDir, String[] args) {
         return nativeStartInternal(qemuLibPath, logPath, storageDir, baseDir, sanitize(args));
@@ -25,7 +29,11 @@ public final class QemuBridge {
         return nativeStopInternal();
     }
 
-    // Compatibility entry points used by the clean v0.7 launcher. These go
+    public static String nativeProbe(String qemuLibPath, String logPath) {
+        return INSTANCE.nativeProbeInternal(qemuLibPath, logPath);
+    }
+
+    // Compatibility entry points used by the clean launcher. These go
     // straight to our JNI bridge; no Limbo UI/settings/VM database is involved.
     public static String nativeStart(String qemuLibPath, String logPath, String[] args) {
         File log = new File(logPath);
@@ -38,6 +46,7 @@ public final class QemuBridge {
         return INSTANCE.nativeStopInternal();
     }
 
+    private native String nativeProbeInternal(String qemuLibPath, String logPath);
     private native String nativeStartInternal(String qemuLibPath, String logPath,
                                               String storageDir, String baseDir, String[] args);
     private native String nativeStopInternal();
