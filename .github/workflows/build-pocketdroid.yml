@@ -1,0 +1,105 @@
+name: Build PocketDroid Prototype
+
+on:
+  push:
+    branches: [ "pocketdroid-prototype" ]
+    paths:
+      - ".github/workflows/build-pocketdroid.yml"
+      - "pocketdroid/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout PocketDroid branch
+        uses: actions/checkout@v5
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 29 tools
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-29" "build-tools;29.0.3"
+
+      - name: Prepare stable debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.pk8 -o /tmp/testkey.pk8
+          curl -fsSL https://raw.githubusercontent.com/aosp-mirror/platform_build/master/target/product/security/testkey.x509.pem -o /tmp/testkey.x509.pem
+          openssl pkcs8 -inform DER -nocrypt -in /tmp/testkey.pk8 -out /tmp/testkey.pem
+          openssl pkcs12 -export -in /tmp/testkey.x509.pem -inkey /tmp/testkey.pem -name androiddebugkey -out /tmp/testkey.p12 -passout pass:android
+          keytool -importkeystore -noprompt \
+            -srckeystore /tmp/testkey.p12 -srcstoretype PKCS12 -srcstorepass android \
+            -destkeystore "$HOME/.android/debug.keystore" -deststoretype JKS -deststorepass android \
+            -alias androiddebugkey
+
+      - name: Clone QEMU Android frontend
+        run: |
+          git clone --depth 1 --branch v6.0.1-LimboEmulator https://github.com/limboemu/limbo.git limbo
+
+      - name: Import ARM64 QEMU binaries from official emulator build
+        run: |
+          curl -fL --retry 3 \
+            https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-x86-6.0.1-qemu-5.1.0.apk \
+            -o /tmp/limbo-engine.apk
+          mkdir -p /tmp/engine-libs
+          unzip -q /tmp/limbo-engine.apk 'lib/arm64-v8a/*' -d /tmp/engine-libs
+          mkdir -p limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a
+          cp /tmp/engine-libs/lib/arm64-v8a/*.so limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a/
+          echo "Imported native libraries:"
+          ls -lh limbo/limbo-android-x86/src/main/jniLibs/arm64-v8a/
+
+      - name: Brand and tune PocketDroid
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          strings = Path('limbo/limbo-android-x86/src/main/res/values/strings.xml')
+          s = strings.read_text()
+          s = s.replace('Limbo x86 PC Emulator', 'PocketDroid')
+          s = s.replace('Limbo x86', 'PocketDroid')
+          strings.write_text(s)
+
+          config = Path('limbo/limbo-android-lib/src/main/java/com/max2idea/android/limbo/main/Config.java')
+          c = config.read_text()
+          c = c.replace('public static final String APP_NAME = "Limbo Emulator";', 'public static final String APP_NAME = "PocketDroid";')
+          config.write_text(c)
+
+          gradle = Path('limbo/limbo-android-x86/build.gradle')
+          g = gradle.read_text()
+          g = g.replace('applicationId "com.limbo.emu.main"', 'applicationId "com.pocketdroid.vm"')
+          g = g.replace('applicationId "com.limbo.emu.main.x86"', 'applicationId "com.pocketdroid.vm"')
+          g = g.replace('ndk { abiFilters "armeabi-v7a","arm64-v8a", "x86", "x86_64" }', 'ndk { abiFilters "arm64-v8a" }')
+          gradle.write_text(g)
+
+          root = Path('limbo/build.gradle')
+          r = root.read_text().replace('jcenter()', 'mavenCentral()')
+          root.write_text(r)
+          PY
+
+      - name: Build PocketDroid APK
+        working-directory: limbo
+        run: |
+          chmod +x gradlew
+          ./gradlew :limbo-android-x86:assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: |
+          cp limbo/limbo-android-x86/build/outputs/apk/debug/limbo-android-x86-debug.apk PocketDroid-Prototype-v0.1.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PocketDroid-Prototype-v0.1
+          path: PocketDroid-Prototype-v0.1.apk
+          retention-days: 30
