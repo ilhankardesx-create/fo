@@ -58,6 +58,14 @@ jobs:
           cp foldlinux/DesktopActivity.kt upstream-pr/android/app/src/main/java/id/or/oo/pr/DesktopActivity.kt
           cp foldlinux/AndroidManifest.xml upstream-pr/android/app/src/main/AndroidManifest.xml
           cp foldlinux/strings.xml upstream-pr/android/app/src/main/res/values/strings.xml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('upstream-pr/android/app/src/main/java/id/or/oo/pr/MainActivity.kt')
+          s = p.read_text()
+          s = s.replace('private const val DESKTOP_INSTALL_COMMAND =', 'private val DESKTOP_INSTALL_COMMAND =')
+          s = s.replace('if [ $CODE -eq 0 ]', 'if [ \\$CODE -eq 0 ]')
+          p.write_text(s)
+          PY
           sed -i 's/>FoldLinux</>FoldLinux Dev</' upstream-pr/android/app/src/main/res/values/strings.xml
           sed -i 's/applicationId = "id.or.oo.pr"/applicationId = "com.foldlinux.prototype"/' upstream-pr/android/app/build.gradle.kts
           sed -i 's/versionCode = 1/versionCode = 4/' upstream-pr/android/app/build.gradle.kts
