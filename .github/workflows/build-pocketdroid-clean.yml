@@ -69,6 +69,7 @@ jobs:
           test -f "$RUNTIME/libcompat-musl.so"
           test -f "$RUNTIME/libglib-2.0.so"
           test -f "$RUNTIME/libpixman-1.so"
+          test -f "$RUNTIME/libcompat-SDL2-addons.so"
           test -f "$RUNTIME/libSDL2.so"
           test -f "$RUNTIME/libcompat-SDL2-ext.so"
 
@@ -77,12 +78,13 @@ jobs:
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
                  "$RUNTIME"/libcompat-musl.so \
+                 "$RUNTIME"/libcompat-SDL2-addons.so \
                  "$RUNTIME"/libSDL2.so \
                  "$RUNTIME"/libcompat-SDL2-ext.so
           echo "QEMU dependencies:"
           readelf -d "$RUNTIME/libqemu-system-aarch64.so" | grep NEEDED || true
           echo "Limbo JNI symbols:"
-          readelf -Ws "$RUNTIME/liblimbo.so" | grep 'Java_com_max2idea_android_limbo_jni_VMExecutor_start' || true
+          readelf -Ws "$RUNTIME/liblimbo.so" | grep 'Java_com_max2idea_android_limbo_jni_VMExecutor_start'
 
       - name: Add ARM64 UEFI firmware
         run: |
@@ -110,6 +112,7 @@ jobs:
           unzip -l "$APK" | grep 'lib/arm64-v8a/libqemu-system-aarch64.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/liblimbo.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-limbo.so'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-SDL2-addons.so'
 
       - name: Package APK
         run: |
