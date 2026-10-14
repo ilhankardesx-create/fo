@@ -33,6 +33,16 @@ jobs:
             "platforms;android-29" \
             "build-tools;29.0.3"
 
+      - name: Install ARM64 UEFI firmware
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-efi-aarch64
+          FW=$(find /usr/share -type f \( -name 'AAVMF_CODE.fd' -o -name 'QEMU_EFI.fd' \) | head -n 1)
+          test -n "$FW"
+          echo "Using ARM64 firmware: $FW"
+          cp "$FW" /tmp/AAVMF_CODE.fd
+          ls -lh /tmp/AAVMF_CODE.fd
+
       - name: Set up Java 11 for legacy emulator build
         uses: actions/setup-java@v5
         with:
@@ -69,17 +79,18 @@ jobs:
           unzip -q /tmp/limbo-arm-engine.apk 'lib/arm64-v8a/*' -d /tmp/engine-libs
           mkdir -p limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a
           cp /tmp/engine-libs/lib/arm64-v8a/*.so limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
-          echo "Imported ARM guest native libraries:"
-          ls -lh limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/
           test -f limbo/limbo-android-arm/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
 
-      - name: Overlay PocketDroid UI
+      - name: Overlay PocketDroid UI and firmware
         run: |
           mkdir -p limbo/limbo-android-arm/src/main/java/com/max2idea/android/limbo/machine
           cp pocketdroid/PocketDroidActivity.java \
             limbo/limbo-android-arm/src/main/java/com/max2idea/android/limbo/machine/PocketDroidActivity.java
           cp pocketdroid/AndroidManifest.xml \
             limbo/limbo-android-arm/src/main/AndroidManifest.xml
+          mkdir -p limbo/limbo-android-arm/src/main/assets/pocketdroid
+          cp /tmp/AAVMF_CODE.fd \
+            limbo/limbo-android-arm/src/main/assets/pocketdroid/AAVMF_CODE.fd
 
       - name: Brand and tune PocketDroid
         run: |
@@ -124,11 +135,12 @@ jobs:
         run: |
           APK=$(find limbo/limbo-android-arm/build/outputs/apk -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Prototype-v0.3.apk
+          cp "$APK" PocketDroid-Prototype-v0.4.apk
+          ls -lh PocketDroid-Prototype-v0.4.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Prototype-v0.3
-          path: PocketDroid-Prototype-v0.3.apk
+          name: PocketDroid-Prototype-v0.4
+          path: PocketDroid-Prototype-v0.4.apk
           retention-days: 30
