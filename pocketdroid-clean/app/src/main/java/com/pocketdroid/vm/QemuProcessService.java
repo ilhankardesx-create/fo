@@ -4,21 +4,21 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
 import android.os.Process;
-import android.system.Os;
-
-import com.max2idea.android.limbo.jni.VMExecutor;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Runs the Limbo ARM64 QEMU runtime in PocketDroid's :qemu process.
+ * Runs the ARM64 QEMU runtime in PocketDroid's isolated :qemu process.
+ *
+ * v1.4 deliberately uses PocketDroid's own instrumented JNI bridge instead of
+ * Limbo's opaque VMExecutor.start(). The bridge writes crash-stage.txt before
+ * every native milestone and mirrors QEMU stdout/stderr into qemu.log, so a
+ * failed boot can no longer hide behind an endless VNC retry loop.
  */
 public class QemuProcessService extends Service {
     private volatile boolean started;
-    private volatile VMExecutor vmExecutor;
-    private FileOutputStream nativeLogStream;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -32,106 +32,49 @@ public class QemuProcessService extends Service {
         final String[] args = intent.getStringArrayExtra("args");
         final String statePath = intent.getStringExtra("statePath");
 
-        // QEMU frequently terminates the process directly on a native startup
-        // error, so Java never gets a chance to report the exception. Mirror
-        // stdout/stderr into qemu.log before loading any native code. The main
-        // PocketDroid process already tails this file live.
-        try {
-            redirectNativeOutput(logPath);
-            writeState(statePath, "NATIVE_LOG_READY pid=" + Process.myPid());
-        } catch (Throwable t) {
-            writeState(statePath, "JAVA_ERROR: log redirect: " + t);
-            started = false;
-            stopSelf(startId);
-            return START_NOT_STICKY;
-        }
-
         writeState(statePath, "SERVICE_STARTED pid=" + Process.myPid());
 
-        // Limbo 6.0.1 explicitly initializes its native libraries from the
-        // Android main thread before starting the QEMU worker. Do the same in
-        // this process. Loading them from the worker can make QEMU fail later.
-        try {
-            VMExecutor.ensureNativeLibrariesLoaded();
-            writeState(statePath, "LIMBO_LIBS_READY pid=" + Process.myPid());
-        } catch (Throwable t) {
-            String message = t.getMessage();
-            writeState(statePath,
-                    "JAVA_ERROR: native load: " + t.getClass().getSimpleName()
-                            + (message == null ? "" : ": " + message));
-            cleanupLog();
-            started = false;
-            stopSelf(startId);
-            return START_NOT_STICKY;
-        }
-
-        Thread t = new Thread(() -> {
+        Thread worker = new Thread(() -> {
             try {
                 File qemu = qemuLibPath == null ? null : new File(qemuLibPath);
                 if (qemu == null || !qemu.isFile()) {
                     throw new IllegalStateException("QEMU kütüphanesi bulunamadı: " + qemuLibPath);
                 }
+                if (logPath == null || logPath.trim().isEmpty()) {
+                    throw new IllegalStateException("QEMU log yolu boş");
+                }
+                if (storageDir == null || baseDir == null) {
+                    throw new IllegalStateException("QEMU storage/base yolu eksik");
+                }
 
-                vmExecutor = new VMExecutor();
-                writeState(statePath, "LIMBO_BRIDGE_READY pid=" + Process.myPid());
-
-                Object[] nativeArgs = args == null ? new String[0] : args;
+                // Force QemuBridge class/JNI loading while Java can still report
+                // a useful error through the state file.
+                QemuBridge bridge = QemuBridge.get();
+                writeState(statePath, "BRIDGE_READY pid=" + Process.myPid());
                 writeState(statePath, "NATIVE_ENTER pid=" + Process.myPid());
 
-                String result = vmExecutor.start(
+                String result = bridge.start(
+                        qemu.getAbsolutePath(),
+                        logPath,
                         storageDir,
                         baseDir,
-                        qemu.getName(),
-                        qemu.getAbsolutePath(),
-                        -1,
-                        nativeArgs);
+                        args == null ? new String[0] : args);
 
                 writeState(statePath, "EXIT: " + result);
-            } catch (Throwable t1) {
-                String message = t1.getMessage();
+            } catch (Throwable t) {
+                String message = t.getMessage();
                 writeState(statePath,
-                        "JAVA_ERROR: " + t1.getClass().getSimpleName()
+                        "JAVA_ERROR: " + t.getClass().getSimpleName()
                                 + (message == null ? "" : ": " + message));
             } finally {
-                vmExecutor = null;
-                cleanupLog();
                 started = false;
                 stopSelf(startId);
             }
-        }, "PocketDroid-QEMU");
-        t.setPriority(Thread.NORM_PRIORITY);
-        t.start();
+        }, "PocketDroid-QEMU-Direct");
+        worker.setPriority(Thread.NORM_PRIORITY);
+        worker.start();
 
         return START_NOT_STICKY;
-    }
-
-    private void redirectNativeOutput(String path) throws Exception {
-        if (path == null || path.trim().isEmpty()) {
-            throw new IllegalArgumentException("qemu.log yolu boş");
-        }
-        File f = new File(path);
-        File parent = f.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IllegalStateException("QEMU log klasörü oluşturulamadı");
-        }
-        nativeLogStream = new FileOutputStream(f, false);
-        Os.dup2(nativeLogStream.getFD(), 1);
-        Os.dup2(nativeLogStream.getFD(), 2);
-        nativeLogStream.write(("PocketDroid native log ready; pid=" + Process.myPid() + "\n")
-                .getBytes(StandardCharsets.UTF_8));
-        nativeLogStream.flush();
-    }
-
-    private void cleanupLog() {
-        try {
-            if (nativeLogStream != null) nativeLogStream.flush();
-        } catch (Exception ignored) {
-        }
-        try {
-            if (nativeLogStream != null) nativeLogStream.close();
-        } catch (Exception ignored) {
-        }
-        nativeLogStream = null;
     }
 
     private void writeState(String path, String value) {
