@@ -10,8 +10,8 @@ android {
         applicationId 'com.pocketdroid.vm'
         minSdk 26
         targetSdk 35
-        versionCode 100000
-        versionName '1.0-limbo-native-final'
+        versionCode 100100
+        versionName '1.1-uefi64-native-log'
 
         ndk {
             abiFilters 'arm64-v8a'
