@@ -52,15 +52,21 @@ jobs:
             -destkeystore "$HOME/.android/debug.keystore" -deststoretype JKS -deststorepass android \
             -alias androiddebugkey
 
-      - name: Import complete Limbo ARM64 runtime
+      - name: Import complete Limbo ARM64 runtime and ROM data
         run: |
           curl -fL --retry 3 \
             https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk \
             -o /tmp/qemu-arm-runtime.apk
+
+          rm -rf /tmp/qemu-runtime
+          mkdir -p /tmp/qemu-runtime
+          unzip -q /tmp/qemu-arm-runtime.apk 'lib/arm64-v8a/*' 'assets/roms/*' -d /tmp/qemu-runtime
+
           mkdir -p pocketdroid-clean/app/src/main/jniLibs/arm64-v8a
-          rm -rf /tmp/qemu-libs
-          unzip -q /tmp/qemu-arm-runtime.apk 'lib/arm64-v8a/*' -d /tmp/qemu-libs
-          cp /tmp/qemu-libs/lib/arm64-v8a/*.so pocketdroid-clean/app/src/main/jniLibs/arm64-v8a/
+          cp /tmp/qemu-runtime/lib/arm64-v8a/*.so pocketdroid-clean/app/src/main/jniLibs/arm64-v8a/
+
+          mkdir -p pocketdroid-clean/app/src/main/assets/roms
+          cp -a /tmp/qemu-runtime/assets/roms/. pocketdroid-clean/app/src/main/assets/roms/
 
           RUNTIME=pocketdroid-clean/app/src/main/jniLibs/arm64-v8a
           test -f "$RUNTIME/libqemu-system-aarch64.so"
@@ -73,7 +79,12 @@ jobs:
           test -f "$RUNTIME/libSDL2.so"
           test -f "$RUNTIME/libcompat-SDL2-ext.so"
 
-          echo "PocketDroid v1.2 native runtime:"
+          ROM_COUNT=$(find pocketdroid-clean/app/src/main/assets/roms -type f | wc -l)
+          echo "Limbo ROM/keymap files: $ROM_COUNT"
+          test "$ROM_COUNT" -gt 5
+          find pocketdroid-clean/app/src/main/assets/roms -type f | head -n 30
+
+          echo "PocketDroid v1.3 native runtime:"
           ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
@@ -115,10 +126,13 @@ jobs:
       - name: Apply v1.2 UTM EFI vars fix
         run: python3 pocketdroid-clean/patch_v12.py
 
-      - name: Build PocketDroid v1.2
+      - name: Apply v1.3 Limbo ROM and argv diagnostics
+        run: python3 pocketdroid-clean/patch_v13.py
+
+      - name: Build PocketDroid v1.3
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
-      - name: Verify packaged runtime and firmware
+      - name: Verify packaged runtime firmware and ROM data
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
@@ -127,17 +141,20 @@ jobs:
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-limbo.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-SDL2-addons.so'
           unzip -l "$APK" | grep 'assets/AAVMF_CODE.fd'
+          ROMS_IN_APK=$(unzip -l "$APK" | grep -c 'assets/roms/' || true)
+          echo "ROM entries packaged: $ROMS_IN_APK"
+          test "$ROMS_IN_APK" -gt 5
 
       - name: Package APK
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.2.apk
-          ls -lh PocketDroid-Clean-v1.2.apk
+          cp "$APK" PocketDroid-Clean-v1.3.apk
+          ls -lh PocketDroid-Clean-v1.3.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.2
-          path: PocketDroid-Clean-v1.2.apk
+          name: PocketDroid-Clean-v1.3
+          path: PocketDroid-Clean-v1.3.apk
           retention-days: 30
