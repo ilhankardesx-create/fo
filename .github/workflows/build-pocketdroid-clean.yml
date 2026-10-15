@@ -91,11 +91,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y qemu-efi-aarch64
 
-          # UTM's efi_vars.fd is a 64 MiB pflash store. Do NOT use the compact
-          # 2 MiB QEMU_EFI.fd: QEMU then aborts before the VNC listener opens.
-          FW=/usr/share/AAVMF/AAVMF_CODE.fd
+          # /usr/share/AAVMF/AAVMF_CODE.fd is a symlink on Ubuntu. Resolve it
+          # before checking size; the symlink itself is only a few bytes long.
+          FW=$(readlink -f /usr/share/AAVMF/AAVMF_CODE.fd)
           test -f "$FW"
           SIZE=$(stat -c%s "$FW")
+          echo "AAVMF_CODE.fd target: $FW"
           echo "AAVMF_CODE.fd size: $SIZE bytes"
           test "$SIZE" -eq 67108864
 
