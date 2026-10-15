@@ -73,7 +73,7 @@ jobs:
           test -f "$RUNTIME/libSDL2.so"
           test -f "$RUNTIME/libcompat-SDL2-ext.so"
 
-          echo "PocketDroid v1.1 native runtime:"
+          echo "PocketDroid v1.2 native runtime:"
           ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
@@ -86,13 +86,11 @@ jobs:
           echo "Limbo JNI symbols:"
           readelf -Ws "$RUNTIME/liblimbo.so" | grep 'Java_com_max2idea_android_limbo_jni_VMExecutor_start'
 
-      - name: Add matched 64MB ARM64 UEFI firmware
+      - name: Add ARM64 AAVMF firmware
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y qemu-efi-aarch64
 
-          # /usr/share/AAVMF/AAVMF_CODE.fd is a symlink on Ubuntu. Resolve it
-          # before checking size; the symlink itself is only a few bytes long.
           FW=$(readlink -f /usr/share/AAVMF/AAVMF_CODE.fd)
           test -f "$FW"
           SIZE=$(stat -c%s "$FW")
@@ -111,10 +109,13 @@ jobs:
       - name: Apply Limbo native boot
         run: python3 pocketdroid-clean/patch_v10.py
 
-      - name: Apply v1.1 UEFI64 fix
+      - name: Apply v1.1 UEFI firmware fix
         run: python3 pocketdroid-clean/patch_v11.py
 
-      - name: Build PocketDroid v1.1
+      - name: Apply v1.2 UTM EFI vars fix
+        run: python3 pocketdroid-clean/patch_v12.py
+
+      - name: Build PocketDroid v1.2
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
       - name: Verify packaged runtime and firmware
@@ -131,12 +132,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.1.apk
-          ls -lh PocketDroid-Clean-v1.1.apk
+          cp "$APK" PocketDroid-Clean-v1.2.apk
+          ls -lh PocketDroid-Clean-v1.2.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.1
-          path: PocketDroid-Clean-v1.1.apk
+          name: PocketDroid-Clean-v1.2
+          path: PocketDroid-Clean-v1.2.apk
           retention-days: 30
