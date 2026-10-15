@@ -73,7 +73,7 @@ jobs:
           test -f "$RUNTIME/libSDL2.so"
           test -f "$RUNTIME/libcompat-SDL2-ext.so"
 
-          echo "PocketDroid v1.0 native runtime:"
+          echo "PocketDroid v1.1 native runtime:"
           ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
@@ -86,26 +86,37 @@ jobs:
           echo "Limbo JNI symbols:"
           readelf -Ws "$RUNTIME/liblimbo.so" | grep 'Java_com_max2idea_android_limbo_jni_VMExecutor_start'
 
-      - name: Add ARM64 UEFI firmware
+      - name: Add matched 64MB ARM64 UEFI firmware
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y qemu-efi-aarch64
-          FW=$(find /usr/share -type f \( -name 'AAVMF_CODE.fd' -o -name 'QEMU_EFI.fd' \) | head -n 1)
-          test -n "$FW"
+
+          # UTM's efi_vars.fd is a 64 MiB pflash store. Do NOT use the compact
+          # 2 MiB QEMU_EFI.fd: QEMU then aborts before the VNC listener opens.
+          FW=/usr/share/AAVMF/AAVMF_CODE.fd
+          test -f "$FW"
+          SIZE=$(stat -c%s "$FW")
+          echo "AAVMF_CODE.fd size: $SIZE bytes"
+          test "$SIZE" -eq 67108864
+
           mkdir -p pocketdroid-clean/app/src/main/assets
           cp "$FW" pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
+          test "$(stat -c%s pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd)" -eq 67108864
           ls -lh pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
 
       - name: Apply diagnostics UI
         run: python3 pocketdroid-clean/patch_v08.py
 
-      - name: Apply v1.0 final Limbo native boot
+      - name: Apply Limbo native boot
         run: python3 pocketdroid-clean/patch_v10.py
 
-      - name: Build PocketDroid v1.0
+      - name: Apply v1.1 UEFI64 fix
+        run: python3 pocketdroid-clean/patch_v11.py
+
+      - name: Build PocketDroid v1.1
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
-      - name: Verify packaged native runtime
+      - name: Verify packaged runtime and firmware
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
@@ -113,17 +124,18 @@ jobs:
           unzip -l "$APK" | grep 'lib/arm64-v8a/liblimbo.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-limbo.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-SDL2-addons.so'
+          unzip -l "$APK" | grep 'assets/AAVMF_CODE.fd'
 
       - name: Package APK
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.0.apk
-          ls -lh PocketDroid-Clean-v1.0.apk
+          cp "$APK" PocketDroid-Clean-v1.1.apk
+          ls -lh PocketDroid-Clean-v1.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.0
-          path: PocketDroid-Clean-v1.0.apk
+          name: PocketDroid-Clean-v1.1
+          path: PocketDroid-Clean-v1.1.apk
           retention-days: 30
