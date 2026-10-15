@@ -33,8 +33,7 @@ public final class QemuBridge {
         return INSTANCE.nativeProbeInternal(qemuLibPath, logPath);
     }
 
-    // Compatibility entry points used by the clean launcher. These go
-    // straight to our JNI bridge; no Limbo UI/settings/VM database is involved.
+    // Compatibility entry points used by older clean-launcher builds.
     public static String nativeStart(String qemuLibPath, String logPath, String[] args) {
         File log = new File(logPath);
         File vmDir = log.getParentFile();
@@ -53,36 +52,24 @@ public final class QemuBridge {
 
     private static String[] sanitize(String[] source) {
         ArrayList<String> out = new ArrayList<>();
-        boolean hasDisplay = false;
-        boolean hasVga = false;
         boolean hasSmp = false;
 
         if (source != null) {
-            for (int i = 0; i < source.length; i++) {
-                String value = source[i];
+            for (String original : source) {
+                String value = original;
                 if ("max,pauth-impdef=on".equals(value)) {
                     value = "max";
                 } else if ("tcg,tb-size=1024,thread=multi".equals(value)) {
                     value = "tcg,thread=multi";
                 }
-                if ("-display".equals(value)) hasDisplay = true;
-                if ("-vga".equals(value)) hasVga = true;
                 if ("-smp".equals(value)) hasSmp = true;
                 out.add(value);
             }
         }
 
-        // PocketDroid renders QEMU through its built-in localhost VNC view.
-        // Disable any implicit SDL/default VGA path so Android never needs
-        // Limbo's SDL Activity just to create the guest display.
-        if (!hasDisplay) {
-            out.add("-display");
-            out.add("none");
-        }
-        if (!hasVga) {
-            out.add("-vga");
-            out.add("none");
-        }
+        // Do not silently inject -display none or -vga none here. The caller
+        // explicitly configures virtio-gpu + VNC, and hidden display overrides
+        // make native startup failures much harder to reason about.
         if (!hasSmp) {
             out.add("-smp");
             out.add("2");
