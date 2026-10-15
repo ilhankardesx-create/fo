@@ -84,7 +84,7 @@ jobs:
           test "$ROM_COUNT" -gt 5
           find pocketdroid-clean/app/src/main/assets/roms -type f | head -n 30
 
-          echo "PocketDroid v1.3 native runtime:"
+          echo "PocketDroid v1.4 native runtime:"
           ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
@@ -94,8 +94,8 @@ jobs:
                  "$RUNTIME"/libcompat-SDL2-ext.so
           echo "QEMU dependencies:"
           readelf -d "$RUNTIME/libqemu-system-aarch64.so" | grep NEEDED || true
-          echo "Limbo JNI symbols:"
-          readelf -Ws "$RUNTIME/liblimbo.so" | grep 'Java_com_max2idea_android_limbo_jni_VMExecutor_start'
+          echo "Direct bridge symbol:"
+          grep -n 'nativeStartInternal' pocketdroid-clean/app/src/main/cpp/qemu_bridge.cpp
 
       - name: Add ARM64 AAVMF firmware
         run: |
@@ -117,7 +117,7 @@ jobs:
       - name: Apply diagnostics UI
         run: python3 pocketdroid-clean/patch_v08.py
 
-      - name: Apply Limbo native boot
+      - name: Apply Limbo native boot base patch
         run: python3 pocketdroid-clean/patch_v10.py
 
       - name: Apply v1.1 UEFI firmware fix
@@ -129,17 +129,19 @@ jobs:
       - name: Apply v1.3 Limbo ROM and argv diagnostics
         run: python3 pocketdroid-clean/patch_v13.py
 
-      - name: Build PocketDroid v1.3
+      - name: Apply v1.4 direct bridge diagnostics
+        run: python3 pocketdroid-clean/patch_v14.py
+
+      - name: Build PocketDroid v1.4
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
-      - name: Verify packaged runtime firmware and ROM data
+      - name: Verify packaged runtime firmware ROM data and bridge
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
           unzip -l "$APK" | grep 'lib/arm64-v8a/libqemu-system-aarch64.so'
-          unzip -l "$APK" | grep 'lib/arm64-v8a/liblimbo.so'
           unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-limbo.so'
-          unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-SDL2-addons.so'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libpocketdroid_bridge.so'
           unzip -l "$APK" | grep 'assets/AAVMF_CODE.fd'
           ROMS_IN_APK=$(unzip -l "$APK" | grep -c 'assets/roms/' || true)
           echo "ROM entries packaged: $ROMS_IN_APK"
@@ -149,12 +151,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.3.apk
-          ls -lh PocketDroid-Clean-v1.3.apk
+          cp "$APK" PocketDroid-Clean-v1.4.apk
+          ls -lh PocketDroid-Clean-v1.4.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.3
-          path: PocketDroid-Clean-v1.3.apk
+          name: PocketDroid-Clean-v1.4
+          path: PocketDroid-Clean-v1.4.apk
           retention-days: 30
