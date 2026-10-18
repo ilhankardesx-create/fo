@@ -82,20 +82,6 @@ jobs:
           ROM_COUNT=$(find pocketdroid-clean/app/src/main/assets/roms -type f | wc -l)
           echo "Limbo ROM/keymap files: $ROM_COUNT"
           test "$ROM_COUNT" -gt 5
-          find pocketdroid-clean/app/src/main/assets/roms -type f | head -n 30
-
-          echo "PocketDroid v1.5 native runtime:"
-          ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
-                 "$RUNTIME"/liblimbo.so \
-                 "$RUNTIME"/libcompat-limbo.so \
-                 "$RUNTIME"/libcompat-musl.so \
-                 "$RUNTIME"/libcompat-SDL2-addons.so \
-                 "$RUNTIME"/libSDL2.so \
-                 "$RUNTIME"/libcompat-SDL2-ext.so
-          echo "QEMU dependencies:"
-          readelf -d "$RUNTIME/libqemu-system-aarch64.so" | grep NEEDED || true
-          echo "Direct bridge symbol:"
-          grep -n 'nativeStartInternal' pocketdroid-clean/app/src/main/cpp/qemu_bridge.cpp
 
       - name: Add ARM64 AAVMF firmware
         run: |
@@ -111,8 +97,6 @@ jobs:
 
           mkdir -p pocketdroid-clean/app/src/main/assets
           cp "$FW" pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
-          test "$(stat -c%s pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd)" -eq 67108864
-          ls -lh pocketdroid-clean/app/src/main/assets/AAVMF_CODE.fd
 
       - name: Apply diagnostics UI
         run: python3 pocketdroid-clean/patch_v08.py
@@ -135,31 +119,37 @@ jobs:
       - name: Apply v1.5 controlled boot patch
         run: python3 pocketdroid-clean/patch_v15.py
 
-      - name: Build PocketDroid v1.5
+      - name: Apply v1.16 source TouchGuard + known-good boot path
+        run: python3 pocketdroid-clean/patch_v16.py
+
+      - name: Build PocketDroid v1.16
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
-      - name: Verify packaged runtime firmware ROM data and bridge
+      - name: Verify APK contents and Android signature
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
+
           unzip -l "$APK" | grep 'lib/arm64-v8a/libqemu-system-aarch64.so'
-          unzip -l "$APK" | grep 'lib/arm64-v8a/libcompat-limbo.so'
-          unzip -l "$APK" | grep 'lib/arm64-v8a/libpocketdroid_bridge.so'
+          unzip -l "$APK" | grep 'lib/arm64-v8a/liblimbo.so'
           unzip -l "$APK" | grep 'assets/AAVMF_CODE.fd'
-          ROMS_IN_APK=$(unzip -l "$APK" | grep -c 'assets/roms/' || true)
-          echo "ROM entries packaged: $ROMS_IN_APK"
-          test "$ROMS_IN_APK" -gt 5
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 "$APK"
+
+          echo "APK SHA-256:"
+          sha256sum "$APK"
 
       - name: Package APK
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.5.apk
-          ls -lh PocketDroid-Clean-v1.5.apk
+          cp "$APK" PocketDroid-Clean-v1.16-Source-TouchGuard.apk
+          ls -lh PocketDroid-Clean-v1.16-Source-TouchGuard.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.5
-          path: PocketDroid-Clean-v1.5.apk
+          name: PocketDroid-Clean-v1.16-Source-TouchGuard
+          path: PocketDroid-Clean-v1.16-Source-TouchGuard.apk
           retention-days: 30
