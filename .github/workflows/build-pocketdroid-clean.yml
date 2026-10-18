@@ -84,7 +84,7 @@ jobs:
           test "$ROM_COUNT" -gt 5
           find pocketdroid-clean/app/src/main/assets/roms -type f | head -n 30
 
-          echo "PocketDroid v1.4 native runtime:"
+          echo "PocketDroid v1.5 native runtime:"
           ls -lh "$RUNTIME"/libqemu-system-aarch64.so \
                  "$RUNTIME"/liblimbo.so \
                  "$RUNTIME"/libcompat-limbo.so \
@@ -132,7 +132,10 @@ jobs:
       - name: Apply v1.4 direct bridge diagnostics
         run: python3 pocketdroid-clean/patch_v14.py
 
-      - name: Build PocketDroid v1.4
+      - name: Apply v1.5 controlled boot patch
+        run: python3 pocketdroid-clean/patch_v15.py
+
+      - name: Build PocketDroid v1.5
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
       - name: Verify packaged runtime firmware ROM data and bridge
@@ -151,12 +154,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.4.apk
-          ls -lh PocketDroid-Clean-v1.4.apk
+          cp "$APK" PocketDroid-Clean-v1.5.apk
+          ls -lh PocketDroid-Clean-v1.5.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.4
-          path: PocketDroid-Clean-v1.4.apk
+          name: PocketDroid-Clean-v1.5
+          path: PocketDroid-Clean-v1.5.apk
           retention-days: 30
