@@ -134,7 +134,10 @@ jobs:
       - name: Apply v1.20 VDA + VDB disks
         run: python3 pocketdroid-clean/patch_v20.py
 
-      - name: Build PocketDroid v1.20
+      - name: Apply v1.21 serial graphics diagnostics
+        run: python3 pocketdroid-clean/patch_v21.py
+
+      - name: Build PocketDroid v1.21
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
       - name: Verify APK contents and Android signature
@@ -156,12 +159,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.20-VDA-VDB.apk
-          ls -lh PocketDroid-Clean-v1.20-VDA-VDB.apk
+          cp "$APK" PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
+          ls -lh PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.20-VDA-VDB
-          path: PocketDroid-Clean-v1.20-VDA-VDB.apk
+          name: PocketDroid-Clean-v1.21-Serial-Graphics-Diag
+          path: PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
           retention-days: 30
