@@ -125,7 +125,10 @@ jobs:
       - name: Apply v1.17 safe boot keys
         run: python3 pocketdroid-clean/patch_v17.py
 
-      - name: Build PocketDroid v1.17
+      - name: Apply v1.18 async VNC key writer
+        run: python3 pocketdroid-clean/patch_v18.py
+
+      - name: Build PocketDroid v1.18
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
       - name: Verify APK contents and Android signature
@@ -147,12 +150,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.17-Safe-Boot-Keys.apk
-          ls -lh PocketDroid-Clean-v1.17-Safe-Boot-Keys.apk
+          cp "$APK" PocketDroid-Clean-v1.18-Async-Boot-Keys.apk
+          ls -lh PocketDroid-Clean-v1.18-Async-Boot-Keys.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.17-Safe-Boot-Keys
-          path: PocketDroid-Clean-v1.17-Safe-Boot-Keys.apk
+          name: PocketDroid-Clean-v1.18-Async-Boot-Keys
+          path: PocketDroid-Clean-v1.18-Async-Boot-Keys.apk
           retention-days: 30
