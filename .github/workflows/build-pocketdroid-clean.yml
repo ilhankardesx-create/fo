@@ -137,7 +137,10 @@ jobs:
       - name: Apply v1.21 serial graphics diagnostics
         run: python3 pocketdroid-clean/patch_v21.py
 
-      - name: Build PocketDroid v1.21
+      - name: Apply v1.22 full kernel panic trace
+        run: python3 pocketdroid-clean/patch_v22.py
+
+      - name: Build PocketDroid v1.22
         run: gradle -p pocketdroid-clean :app:assembleDebug --stacktrace
 
       - name: Verify APK contents and Android signature
@@ -159,12 +162,12 @@ jobs:
         run: |
           APK=$(find pocketdroid-clean/app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           test -n "$APK"
-          cp "$APK" PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
-          ls -lh PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
+          cp "$APK" PocketDroid-Clean-v1.22-Full-Panic-Trace.apk
+          ls -lh PocketDroid-Clean-v1.22-Full-Panic-Trace.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PocketDroid-Clean-v1.21-Serial-Graphics-Diag
-          path: PocketDroid-Clean-v1.21-Serial-Graphics-Diag.apk
+          name: PocketDroid-Clean-v1.22-Full-Panic-Trace
+          path: PocketDroid-Clean-v1.22-Full-Panic-Trace.apk
           retention-days: 30
