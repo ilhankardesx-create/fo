@@ -6,8 +6,26 @@ gradle = root / 'app/build.gradle'
 
 m = main.read_text()
 
-# v1.22: broaden serial diagnostics so early Android userspace failures are visible.
-old = '''                                    if (low.contains("surfaceflinger")
+# v1.22: keep a rolling serial history. Once an Oops / kernel panic appears,
+# dump the recent unfiltered context and then stream every following line.
+needle = '''                long launchTime = System.currentTimeMillis();
+                long serialOffset = 0L;
+                appendLog("[SerialDiag] Android grafik/boot seri logu izleniyor...");
+                while (booting) {'''
+replacement = '''                long launchTime = System.currentTimeMillis();
+                long serialOffset = 0L;
+                ArrayList<String> serialHistory = new ArrayList<>();
+                boolean panicTraceMode = false;
+                appendLog("[SerialDiag] Panic/Oops bekleniyor; son 160 satır hafızada tutuluyor...");
+                while (booting) {'''
+assert needle in m
+m = m.replace(needle, replacement, 1)
+
+old = '''                                String text = new String(chunk, 0, read, StandardCharsets.UTF_8);
+                                String[] lines = text.split("\\r?\\n");
+                                for (String line : lines) {
+                                    String low = line.toLowerCase(Locale.US);
+                                    if (low.contains("surfaceflinger")
                                             || low.contains("gralloc")
                                             || low.contains("hwcomposer")
                                             || low.contains("composer")
@@ -21,8 +39,42 @@ old = '''                                    if (low.contains("surfaceflinger")
                                             || low.contains("bootanim")
                                             || low.contains("fatal")
                                             || low.contains("failed")
-                                            || low.contains("error")) {'''
-new = '''                                    if (low.contains("surfaceflinger")
+                                            || low.contains("error")) {
+                                        appendLog("[SERIAL] " + line);
+                                    }
+                                }'''
+new = '''                                String text = new String(chunk, 0, read, StandardCharsets.UTF_8);
+                                String[] lines = text.split("\\r?\\n");
+                                for (String line : lines) {
+                                    if (line.isEmpty()) continue;
+
+                                    serialHistory.add(line);
+                                    if (serialHistory.size() > 160) {
+                                        serialHistory.remove(0);
+                                    }
+
+                                    String low = line.toLowerCase(Locale.US);
+                                    boolean panicTrigger = low.contains("kernel panic")
+                                            || low.contains("oops:")
+                                            || low.contains("fatal exception")
+                                            || low.contains("unable to handle kernel")
+                                            || low.contains("internal error: oops");
+
+                                    if (panicTrigger && !panicTraceMode) {
+                                        panicTraceMode = true;
+                                        appendLog("========== KERNEL PANIC TRACE BEGIN ==========");
+                                        appendLog("[PANIC] Tetikleyici: " + line);
+                                        appendLog("[PANIC] Öncesindeki son serial satırları:");
+                                        for (String oldLine : serialHistory) {
+                                            appendLog("[PANIC] " + oldLine);
+                                        }
+                                        appendLog("[PANIC] --- Bundan sonrası filtresiz canlı trace ---");
+                                        continue;
+                                    }
+
+                                    if (panicTraceMode) {
+                                        appendLog("[PANIC] " + line);
+                                    } else if (low.contains("surfaceflinger")
                                             || low.contains("gralloc")
                                             || low.contains("hwcomposer")
                                             || low.contains("composer")
@@ -34,37 +86,20 @@ new = '''                                    if (low.contains("surfaceflinger")
                                             || low.contains("gpu")
                                             || low.contains("display")
                                             || low.contains("bootanim")
-                                            || low.contains("init:")
-                                            || low.contains(" init ")
-                                            || low.contains("selinux")
-                                            || low.contains("avc:")
-                                            || low.contains("denied")
-                                            || low.contains("fs_mgr")
-                                            || low.contains("first_stage_mount")
-                                            || low.contains("mount")
-                                            || low.contains("dm-")
-                                            || low.contains("verity")
-                                            || low.contains("apex")
-                                            || low.contains("ueventd")
-                                            || low.contains("binder")
-                                            || low.contains("servicemanager")
-                                            || low.contains("hwservicemanager")
-                                            || low.contains("zygote")
-                                            || low.contains("vold")
-                                            || low.contains("panic")
-                                            || low.contains("not syncing")
                                             || low.contains("fatal")
                                             || low.contains("failed")
-                                            || low.contains("error")) {'''
+                                            || low.contains("error")) {
+                                        appendLog("[SERIAL] " + line);
+                                    }
+                                }'''
 assert old in m
 m = m.replace(old, new, 1)
+
 m = m.replace('=== v1.21 SOURCE BUILD • SERIAL GRAPHICS DIAG ===',
-              '=== v1.22 SOURCE BUILD • FULL BOOT DIAG ===', 1)
-m = m.replace('[SerialDiag] Android grafik/boot seri logu izleniyor...',
-              '[SerialDiag] Android init/mount/SELinux/graphics logu izleniyor...', 1)
+              '=== v1.22 SOURCE BUILD • FULL PANIC TRACE ===', 1)
 main.write_text(m)
 
 g = gradle.read_text()
 g = g.replace('versionCode 100421', 'versionCode 100422')
-g = g.replace("versionName '1.21-serial-graphics-diag'", "versionName '1.22-full-boot-diag'")
+g = g.replace("versionName '1.21-serial-graphics-diag'", "versionName '1.22-full-panic-trace'")
 gradle.write_text(g)
