@@ -1,20 +1,23 @@
-name: Build FoldDesk Prototype APK
+name: Build FoldDesk RustDesk APK
 
 on:
   push:
     branches: [ "folddesk-prototype" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      RUSTDESK_VERSION: "1.5.0"
+      APK_NAME: "FoldDesk-v0.1-RustDesk.apk"
 
     steps:
-      - name: Checkout
+      - name: Checkout FoldDesk patch
         uses: actions/checkout@v5
 
       - name: Set up Java 17
@@ -23,27 +26,87 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Accept Android licenses
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-
-      - name: Install Android 36
-        run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Set up Gradle 9.6
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Flutter 3.24.5
+        uses: subosito/flutter-action@v2
         with:
-          gradle-version: '9.6.0'
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk FoldDesk-Prototype-v0.4.apk
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          flutter doctor -v
 
-      - name: Upload APK
+      - name: Clone matching RustDesk source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --branch "$RUSTDESK_VERSION" --depth 1 https://github.com/rustdesk/rustdesk.git rustdesk
+          git -C rustdesk submodule update --init --recursive --depth 1
+
+      - name: Apply FoldDesk UI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 foldesk/patch_rustdesk.py rustdesk
+          grep -n "FoldDeskShell" rustdesk/flutter/lib/mobile/pages/remote_page.dart
+          grep -n "com.foldesk.remote" rustdesk/flutter/android/app/build.gradle
+
+      - name: Fetch RustDesk native ARM64 core
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="rustdesk-${RUSTDESK_VERSION}-aarch64-signed.apk"
+          URL="https://github.com/rustdesk/rustdesk/releases/download/${RUSTDESK_VERSION}/${APK}"
+          curl -fL --retry 3 --retry-delay 2 -o "$APK" "$URL"
+          DEST="rustdesk/flutter/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$DEST"
+          unzip -o -j "$APK" "lib/arm64-v8a/librustdesk.so" -d "$DEST"
+          unzip -o -j "$APK" "lib/arm64-v8a/libc++_shared.so" -d "$DEST"
+          file "$DEST/librustdesk.so"
+          file "$DEST/libc++_shared.so"
+
+      - name: Prepare Rust and Flutter dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd rustdesk
+          cargo fetch
+          cd flutter
+          flutter pub get
+
+      - name: Build FoldDesk debug APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd rustdesk/flutter
+          flutter build apk \
+            --debug \
+            --target-platform android-arm64 \
+            --build-name 0.1.0 \
+            --build-number 1
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cp rustdesk/flutter/build/app/outputs/flutter-apk/app-debug.apk "$APK_NAME"
+          ls -lh "$APK_NAME"
+          sha256sum "$APK_NAME" | tee "$APK_NAME.sha256"
+
+      - name: Upload FoldDesk APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoldDesk-Prototype-v0.4
-          path: FoldDesk-Prototype-v0.4.apk
+          name: FoldDesk-v0.1-RustDesk
+          path: |
+            FoldDesk-v0.1-RustDesk.apk
+            FoldDesk-v0.1-RustDesk.apk.sha256
+          retention-days: 14
+          if-no-files-found: error
