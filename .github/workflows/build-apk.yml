@@ -26,6 +26,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Flutter 3.24.5
         uses: subosito/flutter-action@v2
         with:
@@ -41,7 +44,7 @@ jobs:
         run: |
           set -euxo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           flutter doctor -v
 
       - name: Clone matching RustDesk source
