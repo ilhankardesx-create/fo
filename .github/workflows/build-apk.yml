@@ -121,6 +121,25 @@ jobs:
           flutter pub get
           flutter doctor -v
 
+      - name: Increase Gradle heap for RustDesk assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('rustdesk/flutter/android/gradle.properties')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          prefixes = ('org.gradle.jvmargs=', 'kotlin.daemon.jvmargs=', 'org.gradle.workers.max=')
+          lines = [line for line in lines if not line.startswith(prefixes)]
+          lines += [
+              'org.gradle.jvmargs=-Xmx4096M -XX:MaxMetaspaceSize=1024M -Dfile.encoding=UTF-8',
+              'kotlin.daemon.jvmargs=-Xmx1536M',
+              'org.gradle.workers.max=1',
+          ]
+          p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print(p.read_text(encoding='utf-8'))
+          PY
+
       - name: Build FoldDesk debug APK
         shell: bash
         run: |
