@@ -15,6 +15,8 @@ jobs:
     env:
       RUSTDESK_VERSION: "1.5.0"
       APK_NAME: "FoldDesk-v0.1-RustDesk.apk"
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout FoldDesk patch
@@ -25,9 +27,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       - name: Set up Flutter 3.24.5
         uses: subosito/flutter-action@v2
@@ -43,8 +42,12 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          flutter config --android-sdk "$ANDROID_SDK_ROOT"
           flutter doctor -v
 
       - name: Clone matching RustDesk source
