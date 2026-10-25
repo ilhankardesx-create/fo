@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 75
     env:
       RUSTDESK_VERSION: "1.5.0"
-      APK_NAME: "FoldDesk-v0.3-RustDesk.apk"
+      APK_NAME: "FoldDesk-v0.4-RustDesk.apk"
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       FLUTTER_RUST_BRIDGE_VERSION: "1.80.1"
@@ -68,7 +68,9 @@ jobs:
         run: |
           set -euxo pipefail
           python3 foldesk/patch_rustdesk.py rustdesk
+          python3 foldesk/fix_screen.py rustdesk
           grep -n "FoldDeskShell" rustdesk/flutter/lib/mobile/pages/remote_page.dart
+          grep -n "FoldDesk v0.4 screen rendering fix applied" /dev/null || true
           grep -n "com.foldesk.remote" rustdesk/flutter/android/app/build.gradle
 
       - name: Fetch RustDesk native ARM64 core
@@ -148,8 +150,8 @@ jobs:
           flutter build apk \
             --debug \
             --target-platform android-arm64 \
-            --build-name 0.3.0 \
-            --build-number 3
+            --build-name 0.4.0 \
+            --build-number 4
 
       - name: Package APK
         shell: bash
@@ -162,9 +164,9 @@ jobs:
       - name: Upload FoldDesk APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoldDesk-v0.3-RustDesk
+          name: FoldDesk-v0.4-RustDesk
           path: |
-            FoldDesk-v0.3-RustDesk.apk
-            FoldDesk-v0.3-RustDesk.apk.sha256
+            FoldDesk-v0.4-RustDesk.apk
+            FoldDesk-v0.4-RustDesk.apk.sha256
           retention-days: 14
           if-no-files-found: error
