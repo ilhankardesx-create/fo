@@ -13,6 +13,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -73,6 +74,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         engine = LocalModelEngine(this)
         buildUi()
         restoreModel()
@@ -98,12 +100,6 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         }
         top.addView(menu, LinearLayout.LayoutParams(dp(52), dp(52)))
         top.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        top.addView(TextView(this).apply {
-            text = "✦"
-            textSize = 29f
-            gravity = Gravity.CENTER
-            setTextColor(textColor)
-        }, LinearLayout.LayoutParams(dp(52), dp(52)))
 
         val content = FrameLayout(this)
         root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -230,7 +226,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
                     "Modeli kaldır" -> removeModel()
                     "Hakkında" -> AlertDialog.Builder(this@MainActivity)
                         .setTitle("Offline AI")
-                        .setMessage("Prototype 0.1\nLiteRT-LM ile cihaz üzerinde yerel yapay zekâ.")
+                        .setMessage("Prototype 0.2\nLiteRT-LM ile cihaz üzerinde yerel yapay zekâ.")
                         .setPositiveButton("Tamam", null)
                         .show()
                 }
