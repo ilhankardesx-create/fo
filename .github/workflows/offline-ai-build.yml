@@ -17,32 +17,23 @@ jobs:
         with:
           ref: offline-ai-clean-build
 
-      - name: Hydrate Offline AI 0.9.2 source and launcher icon
+      - name: Hydrate Offline AI 0.9.2 source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p offline-ai/app/src/main/java/com/offlineai/app
-          mkdir -p offline-ai/app/src/main/res/mipmap-xxxhdpi
+          rm -rf offline-ai/app/src/main/res/mipmap-xxxhdpi
           curl -fsSL \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${{ github.repository }}/git/blobs/54d1764e7646465c2840e0af33645adc0bb42b54" \
             | jq -r '.content' | tr -d '\n' | base64 -d \
             > offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
-          curl -fsSL \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/git/blobs/9907d6e566548eaf4d2fb52e9825dd7e490c978d" \
-            | jq -r '.content' | tr -d '\n' | base64 -d \
-            > offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          cp offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
-             offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
-          file offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
-          test -s offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           grep -q 'showModelsDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'extractPdfText' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          test -s offline-ai/app/src/main/res/drawable/ic_app_logo.xml
 
       - uses: actions/setup-java@v5
         with:
