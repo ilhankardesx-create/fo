@@ -13,8 +13,8 @@ android {
         applicationId = "com.internetsizyapayzeka.app2026"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "0.9.1-ui"
+        versionCode = 25
+        versionName = "0.9.2"
     }
 
     buildTypes {
@@ -45,4 +45,5 @@ dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.0")
     implementation("io.noties.markwon:core:4.6.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }
