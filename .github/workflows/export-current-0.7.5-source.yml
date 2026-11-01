@@ -1,0 +1,44 @@
+name: Export current 0.7.5 source
+
+on:
+  push:
+    branches: [ "offline-ai-0.6-build" ]
+    paths:
+      - ".github/workflows/export-current-0.7.5-source.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        run: |
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > source.zip
+          mkdir project
+          unzip -q source.zip -d project
+      - name: Apply current 0.7.5 patches
+        run: |
+          cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_6_3.py
+          python3 hotfix/patch_0_6_4.py
+          python3 hotfix/patch_0_7_0.py
+          python3 hotfix/patch_0_7_1.py
+          python3 hotfix/patch_0_7_1_compile_fix.py
+          python3 hotfix/patch_0_7_2.py
+          cp hotfix/LocalModelEngine_0_7_5.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_7_5.py
+      - name: Stage source snapshot
+        run: |
+          mkdir snapshot
+          cp project/app/src/main/java/com/offlineai/app/MainActivity.kt snapshot/
+          cp project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt snapshot/
+          cp project/app/build.gradle.kts snapshot/
+          cp project/app/src/main/AndroidManifest.xml snapshot/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: current-0.7.5-source
+          path: snapshot/
