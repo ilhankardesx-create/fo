@@ -4,23 +4,30 @@ p = Path("project/app/src/main/java/com/offlineai/app/MainActivity.kt")
 s = p.read_text()
 
 old = '''                getOrCreateEngine().streamReply(prompt).collect { chunk ->
+                    // LiteRT can emit thought-only events whose visible text is empty.
+                    // Do not hide the thinking label until real user-facing text arrives.
+                    if (chunk.isBlank()) return@collect
                     if (firstChunk) {
                         firstChunk = false
                         thinkingJob.cancel()
+                        answer.alpha = 1f
                         answer.text = ""
                         answer.setTextColor(textColor)
                         answer.typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
                     }
                     answer.append(chunk)
                     scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
-                }
-'''
+                }'''
 
 new = '''                val rawAnswer = StringBuilder()
                 getOrCreateEngine().streamReply(prompt).collect { chunk ->
+                    // LiteRT can emit thought-only events whose visible text is empty.
+                    // Do not hide the thinking label until real user-facing text arrives.
+                    if (chunk.isBlank()) return@collect
                     if (firstChunk) {
                         firstChunk = false
                         thinkingJob.cancel()
+                        answer.alpha = 1f
                         answer.text = ""
                         answer.setTextColor(textColor)
                         answer.typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
@@ -28,8 +35,7 @@ new = '''                val rawAnswer = StringBuilder()
                     rawAnswer.append(chunk)
                     answer.text = formatAssistantText(rawAnswer.toString())
                     scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
-                }
-'''
+                }'''
 
 if old not in s:
     raise SystemExit("stream rendering block not found")
@@ -40,14 +46,13 @@ marker = '''    private fun startThinkingAnimation(target: TextView): Job = laun
 formatter = r'''    private fun formatAssistantText(raw: String): String {
         var value = raw.replace("\r\n", "\n")
 
-        // The UI intentionally renders clean native text rather than exposing markdown tokens.
+        // Clean native rendering: never expose raw markdown markers to users.
         value = value
             .replace("**", "")
             .replace("__", "")
             .replace("```", "")
 
-        // If a small local model emits list markers without line breaks (e.g. "tarif:1. ...2."),
-        // repair the presentation deterministically in the app instead of relying on prompting.
+        // Repair list markers deterministically if a small local model emits them inline.
         value = value.replace(
             Regex("(?<![\\d\\n])([1-9]\\d?\\.)\\s*(?=[\\p{L}\\p{N}])"),
             "\n$1 "
@@ -57,7 +62,6 @@ formatter = r'''    private fun formatAssistantText(raw: String): String {
             "\n$1 "
         )
 
-        // Preserve deliberate new lines while cleaning accidental spacing from streamed chunks.
         value = value.replace(Regex("[ \\t]+"), " ")
         value = value.replace(Regex(" *\\n *"), "\n")
         value = value.replace(Regex("\\n{3,}"), "\n\n")
