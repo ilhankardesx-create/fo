@@ -1,4 +1,4 @@
-name: Build and publish Offline AI 0.7.0 APK
+name: Build and publish Offline AI 0.7.1 APK
 
 on:
   push:
@@ -28,13 +28,14 @@ jobs:
           mkdir project
           unzip -q source.zip -d project
 
-      - name: Apply 0.7.0 fixes
+      - name: Apply 0.7.1 fixes
         run: |
           cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
           cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
           python3 hotfix/patch_0_6_3.py
           python3 hotfix/patch_0_6_4.py
           python3 hotfix/patch_0_7_0.py
+          python3 hotfix/patch_0_7_1.py
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -43,8 +44,8 @@ jobs:
           s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
           if 'compilerOptions' not in s:
               s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
-          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 10', s)
-          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.7.0-prototype"', s)
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 11', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.7.1-prototype"', s)
           p.write_text(s)
           PY
 
@@ -69,15 +70,15 @@ jobs:
 
       - name: Publish APK to branch
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.7.0.apk
+          cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.7.1.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Offline-AI-Prototype-0.7.0.apk
-          git commit -m "Add Offline AI 0.7.0 APK [skip ci]"
+          git add Offline-AI-Prototype-0.7.1.apk
+          git commit -m "Add Offline AI 0.7.1 APK [skip ci]"
           git push origin HEAD:offline-ai-0.6-build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Offline-AI-Prototype-0.7.0
-          path: Offline-AI-Prototype-0.7.0.apk
+          name: Offline-AI-Prototype-0.7.1
+          path: Offline-AI-Prototype-0.7.1.apk
