@@ -17,7 +17,7 @@ jobs:
         with:
           ref: offline-ai-clean-build
 
-      - name: Hydrate Offline AI 0.9.2 source
+      - name: Hydrate Offline AI 0.9.3 source
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -31,9 +31,14 @@ jobs:
             | jq -r '.content' | tr -d '\n' | base64 -d \
             > offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           sed -i 's/com.tom_roush.pdfbox.util.PDFBoxResourceLoader/com.tom_roush.pdfbox.android.PDFBoxResourceLoader/' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          python3 offline-ai/patch_093.py
           test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          test -s offline-ai/app/src/main/java/com/offlineai/app/SamsungPerformanceBoost.kt
           grep -q 'showModelsDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'extractPdfText' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'POWER_MODEL_URL' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'Gemma 4 12B' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'samsungPerformanceBoost.start()' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'com.tom_roush.pdfbox.android.PDFBoxResourceLoader' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -s offline-ai/app/src/main/res/drawable/ic_app_logo.xml
 
@@ -64,7 +69,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: offline-ai-clean-unsigned
+          name: offline-ai-0.9.3-unsigned
           path: offline-ai/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
