@@ -1,0 +1,78 @@
+name: Sign Internetsiz Yapay Zeka 0.8.0 Gemma4 APK
+
+on:
+  push:
+    branches: [ "offline-ai-0.6-build" ]
+    paths:
+      - ".github/workflows/sign-internetsiz-ai-0.8.0-gemma4-apk.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download compiled Gemma 4 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-0.8.0-Gemma4-unsigned
+          path: unsigned
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ilhankardesx-create/fo
+          run-id: 41327904531
+
+      - name: Download existing 0.7.4 upload key backup
+        uses: actions/download-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-Play-0.7.4
+          path: old-play
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ilhankardesx-create/fo
+          run-id: 41315500954
+
+      - name: Install Android build tools
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0"
+
+      - name: Sign and verify APK with existing upload key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir signing
+          unzip -q old-play/Internetsiz-Yapay-Zeka-upload-key-yedek-0.7.4.zip -d signing
+          PASS=$(sed -n 's/^Keystore parola: //p' signing/upload-key-bilgileri.txt | head -n1)
+          test -n "$PASS"
+
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 \
+            unsigned/Internetsiz-Yapay-Zeka-0.8.0-Gemma4-unsigned.apk \
+            Internetsiz-Yapay-Zeka-0.8.0-Gemma4-aligned.apk
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks signing/upload-key.jks \
+            --ks-key-alias offlineai-upload \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out Internetsiz-Yapay-Zeka-0.8.0-Gemma4.apk \
+            Internetsiz-Yapay-Zeka-0.8.0-Gemma4-aligned.apk
+
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs \
+            Internetsiz-Yapay-Zeka-0.8.0-Gemma4.apk
+
+          rm -rf signing old-play unsigned Internetsiz-Yapay-Zeka-0.8.0-Gemma4-aligned.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-0.8.0-Gemma4-signed
+          path: Internetsiz-Yapay-Zeka-0.8.0-Gemma4.apk
