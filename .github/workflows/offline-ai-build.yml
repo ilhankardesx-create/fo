@@ -1,0 +1,39 @@
+name: Offline AI clean APK
+
+on:
+  push:
+    branches: [offline-ai-clean-build]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: offline-ai-clean-build
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build unsigned release APK
+        working-directory: offline-ai
+        run: gradle :app:assembleRelease --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-clean-unsigned
+          path: offline-ai/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
