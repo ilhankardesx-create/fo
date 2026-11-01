@@ -24,7 +24,7 @@ jobs:
           mkdir project
           unzip -q OfflineAI-Prototype-0.6-source.zip -d project
 
-      - name: Update Kotlin JVM target syntax
+      - name: Apply Kotlin compatibility fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -33,6 +33,12 @@ jobs:
           s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
           s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
           p.write_text(s)
+
+          m = Path("project/app/src/main/java/com/offlineai/app/MainActivity.kt")
+          t = m.read_text()
+          t = t.replace('ScrollView.LayoutParams(', 'FrameLayout.LayoutParams(')
+          t = t.replace('isTextSelectable = true', 'setTextIsSelectable(true)')
+          m.write_text(t)
           PY
 
       - name: Set up Java 17
