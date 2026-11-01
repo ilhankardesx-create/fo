@@ -271,8 +271,8 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
                     item.title.toString() == "Hakkında" -> AlertDialog.Builder(this@MainActivity)
                         .setTitle("Offline AI")
                         .setMessage(
-                            "Prototype 0.4\n" +
-                                "GPU hızlandırma açık.\n" +
+                            "Prototype 0.5\n" +
+                                "GPU otomatik denenir; desteklenmezse 8 thread CPU'ya geçer.\n" +
                                 "Derin düşünme varsayılan olarak kapalı."
                         )
                         .setPositiveButton("Tamam", null)
@@ -320,7 +320,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
 
     private fun importAndLoad(uri: Uri, name: String) {
         progress.visibility = View.VISIBLE
-        status.text = "Model GPU için hazırlanıyor…"
+        status.text = "En hızlı motor seçiliyor…"
         launch {
             runCatching {
                 val modelFile = withContext(Dispatchers.IO) {
@@ -331,21 +331,30 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
                     }
                     out
                 }
-                engine.load(modelFile.absolutePath)
+                val backend = engine.load(modelFile.absolutePath)
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(KEY_MODEL_PATH, modelFile.absolutePath)
                     .putString(KEY_MODEL_NAME, name)
                     .apply()
-            }.onSuccess {
+                backend
+            }.onSuccess { backend ->
                 progress.visibility = View.GONE
-                status.text = "✓ $name · GPU"
-                Toast.makeText(this@MainActivity, "Model GPU üzerinde hazır.", Toast.LENGTH_SHORT).show()
-            }.onFailure {
-                progress.visibility = View.GONE
-                status.text = "GPU modeli yükleyemedi"
+                status.text = "✓ $name · $backend"
                 Toast.makeText(
                     this@MainActivity,
-                    it.message ?: "GPU model hatası",
+                    if (backend == "GPU") {
+                        "Model GPU üzerinde hazır."
+                    } else {
+                        "GPU açılamadı; model 8 thread CPU modunda hazır."
+                    },
+                    Toast.LENGTH_LONG
+                ).show()
+            }.onFailure {
+                progress.visibility = View.GONE
+                status.text = "Model yüklenemedi"
+                Toast.makeText(
+                    this@MainActivity,
+                    "Model ne GPU ne CPU ile açılabildi.",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -359,19 +368,26 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         val file = File(path)
         if (!file.exists()) return
         progress.visibility = View.VISIBLE
-        status.text = "Model GPU'da açılıyor…"
+        status.text = "En hızlı motor seçiliyor…"
         launch {
             runCatching { engine.load(path) }
-                .onSuccess {
+                .onSuccess { backend ->
                     progress.visibility = View.GONE
-                    status.text = "✓ $name · GPU"
+                    status.text = "✓ $name · $backend"
+                    if (backend == "CPU ×8") {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "GPU bu cihazda açılamadı; otomatik 8 thread CPU'ya geçildi.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 }
                 .onFailure {
                     progress.visibility = View.GONE
                     status.text = "Model tekrar seçilmeli"
                     Toast.makeText(
                         this@MainActivity,
-                        it.message ?: "GPU modeli açılamadı",
+                        "Model açılamadı. Sol üst menüden tekrar seç.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -534,6 +550,9 @@ class LocalModelEngine(
     @Volatile
     private var thinkingEnabled = initialThinkingEnabled
 
+    @Volatile
+    private var activeBackend = ""
+
     val isLoaded: Boolean
         get() = engine != null && conversation != null
 
@@ -541,24 +560,43 @@ class LocalModelEngine(
         thinkingEnabled = enabled
     }
 
-    suspend fun load(modelPath: String) = withContext(dispatcher) {
+    suspend fun load(modelPath: String): String = withContext(dispatcher) {
         mutex.withLock {
-            if (loadedPath == modelPath && isLoaded) return@withLock
+            if (loadedPath == modelPath && isLoaded) return@withLock activeBackend
             releaseInternal()
 
-            val candidate = Engine(
-                EngineConfig(
-                    modelPath = modelPath,
-                    backend = Backend.GPU(),
-                    cacheDir = context.cacheDir.absolutePath
-                )
-            )
-            candidate.initialize()
-            val candidateConversation = candidate.createConversation(conversationConfig())
-            engine = candidate
-            conversation = candidateConversation
+            val gpuAttempt = runCatching {
+                createEngine(modelPath, Backend.GPU())
+            }
+
+            val loaded = if (gpuAttempt.isSuccess) {
+                activeBackend = "GPU"
+                gpuAttempt.getOrThrow()
+            } else {
+                val cpuLoaded = createEngine(modelPath, Backend.CPU(threadCount = 8))
+                activeBackend = "CPU ×8"
+                cpuLoaded
+            }
+
+            engine = loaded.first
+            conversation = loaded.second
             loadedPath = modelPath
+            activeBackend
         }
+    }
+
+    private fun createEngine(modelPath: String, backend: Backend): Pair<Engine, Conversation> {
+        val candidate = Engine(
+            EngineConfig(
+                modelPath = modelPath,
+                backend = backend,
+                maxNumTokens = 2048,
+                cacheDir = context.cacheDir.absolutePath
+            )
+        )
+        candidate.initialize()
+        val candidateConversation = candidate.createConversation(conversationConfig())
+        return candidate to candidateConversation
     }
 
     fun streamReply(prompt: String): Flow<String> = channelFlow {
@@ -610,6 +648,7 @@ class LocalModelEngine(
         engine?.close()
         engine = null
         loadedPath = null
+        activeBackend = ""
     }
 
     private suspend fun stopGenerationIfNeeded() {
