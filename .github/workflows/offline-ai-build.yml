@@ -17,6 +17,30 @@ jobs:
         with:
           ref: offline-ai-clean-build
 
+      - name: Hydrate Offline AI 0.9.2 source and launcher icon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p offline-ai/app/src/main/java/com/offlineai/app
+          mkdir -p offline-ai/app/src/main/res/mipmap-xxxhdpi
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw+json" \
+            "https://api.github.com/repos/${{ github.repository }}/git/blobs/54d1764e7646465c2840e0af33645adc0bb42b54" \
+            -o offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw+json" \
+            "https://api.github.com/repos/${{ github.repository }}/git/blobs/bd943947cea0dd1fa9e3675f333d866878c8b2d7" \
+            -o offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
+             offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          test -s offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          grep -q 'showModelDownloadDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'readPdfText' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
