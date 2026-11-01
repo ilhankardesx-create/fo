@@ -149,7 +149,13 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(8), 0, dp(10))
         }
-        scroll.addView(chatColumn, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        scroll.addView(
+            chatColumn,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         val inputBar = LinearLayout(this).apply {
@@ -191,9 +197,13 @@ class MainActivity : Activity() {
         }
         inputBar.addView(sendButton, LinearLayout.LayoutParams(dp(58), dp(58)))
 
-        root.addView(inputBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(8)
-        })
+        root.addView(
+            inputBar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        )
 
         setContentView(root)
     }
@@ -223,10 +233,9 @@ class MainActivity : Activity() {
 
                 withContext(Dispatchers.Default) {
                     val activeConversation = conversation ?: error("Sohbet başlatılamadı")
-                    activeConversation.sendMessageAsync(prompt).collect { message ->
-                        val delta = message.toString()
-                        if (delta.isNotEmpty()) {
-                            sb.append(delta)
+                    activeConversation.sendMessageAsync(prompt).collect { chunk ->
+                        if (chunk.isNotEmpty()) {
+                            sb.append(chunk)
                             val now = SystemClock.uptimeMillis()
                             if (now - lastDraw >= 18L) {
                                 lastDraw = now
@@ -260,16 +269,15 @@ class MainActivity : Activity() {
 
             var lastError: Throwable? = null
             val attempts = listOf(
-                Triple<Backend, Boolean, String>(Backend.GPU(), true, "GPU · MTP"),
-                Triple<Backend, Boolean, String>(Backend.GPU(), false, "GPU"),
-                Triple<Backend, Boolean, String>(Backend.CPU(), false, "CPU")
+                Triple(Backend.GPU(), true, "GPU · MTP"),
+                Triple(Backend.GPU(), false, "GPU"),
+                Triple(Backend.CPU(), false, "CPU")
             )
 
             for ((backend, mtp, label) in attempts) {
                 try {
                     val spec = SpeculativeDecodingConfig(
-                        mode = if (mtp) SpeculativeDecodingMode.ON else SpeculativeDecodingMode.OFF,
-                        lenience = 0f
+                        mode = if (mtp) SpeculativeDecodingMode.ON else SpeculativeDecodingMode.OFF
                     )
                     val e = Engine(
                         EngineConfig(
@@ -349,13 +357,26 @@ class MainActivity : Activity() {
             background = rounded(Color.rgb(48, 48, 49), 28)
             maxWidth = (resources.displayMetrics.widthPixels * 0.78f).toInt()
         }
-        row.addView(tv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END).apply {
-            leftMargin = dp(64)
-            rightMargin = dp(2)
-            topMargin = dp(12)
-            bottomMargin = dp(8)
-        })
-        chatColumn.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        row.addView(
+            tv,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.END
+            ).apply {
+                leftMargin = dp(64)
+                rightMargin = dp(2)
+                topMargin = dp(12)
+                bottomMargin = dp(8)
+            }
+        )
+        chatColumn.addView(
+            row,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         scrollToBottom()
     }
 
@@ -367,12 +388,18 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(17), dp(18), dp(17))
             background = rounded(Color.rgb(29, 43, 59), 22)
         }
-        chatColumn.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            leftMargin = dp(2)
-            rightMargin = dp(2)
-            topMargin = dp(4)
-            bottomMargin = dp(10)
-        })
+        chatColumn.addView(
+            tv,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(2)
+                rightMargin = dp(2)
+                topMargin = dp(4)
+                bottomMargin = dp(10)
+            }
+        )
         tv.text = initial
         scrollToBottom()
         return tv
@@ -429,8 +456,9 @@ class MainActivity : Activity() {
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val name = queryDisplayName(uri).takeIf { it.endsWith(".litertlm", ignoreCase = true) }
-                        ?: "gemma-4-E4B-it.litertlm"
+                    val name = queryDisplayName(uri).takeIf {
+                        it.endsWith(".litertlm", ignoreCase = true)
+                    } ?: "gemma-4-E4B-it.litertlm"
                     val dir = File(filesDir, "models").apply { mkdirs() }
                     val out = File(dir, name)
                     contentResolver.openInputStream(uri).use { inputStream ->
@@ -459,7 +487,13 @@ class MainActivity : Activity() {
 
     private fun queryDisplayName(uri: Uri): String {
         return try {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             } ?: "model.litertlm"
         } catch (_: Throwable) {
@@ -487,9 +521,13 @@ class MainActivity : Activity() {
 
     private fun findModel(root: File, depth: Int): File? {
         if (depth < 0 || !root.exists()) return null
-        if (root.isFile) return root.takeIf { it.name.endsWith(".litertlm", ignoreCase = true) }
+        if (root.isFile) {
+            return root.takeIf { it.name.endsWith(".litertlm", ignoreCase = true) }
+        }
         val children = root.listFiles() ?: return null
-        children.firstOrNull { it.isFile && it.name.endsWith(".litertlm", ignoreCase = true) }?.let { return it }
+        children.firstOrNull {
+            it.isFile && it.name.endsWith(".litertlm", ignoreCase = true)
+        }?.let { return it }
         for (child in children) {
             if (child.isDirectory) findModel(child, depth - 1)?.let { return it }
         }
@@ -503,5 +541,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 }
