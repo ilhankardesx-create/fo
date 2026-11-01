@@ -33,11 +33,12 @@ jobs:
           curl -fsSL \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/git/blobs/bd943947cea0dd1fa9e3675f333d866878c8b2d7" \
+            "https://api.github.com/repos/${{ github.repository }}/git/blobs/9907d6e566548eaf4d2fb52e9825dd7e490c978d" \
             | jq -r '.content' | tr -d '\n' | base64 -d \
             > offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           cp offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png \
              offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          file offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -s offline-ai/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           grep -q 'showModelsDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
