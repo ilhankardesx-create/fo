@@ -1,0 +1,127 @@
+name: Build Play Store AAB
+
+on:
+  push:
+    branches: [ "offline-ai-0.6-build" ]
+    paths:
+      - ".github/workflows/build-play-aab.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        run: |
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > source.zip
+          unzip -t source.zip
+          mkdir project
+          unzip -q source.zip -d project
+
+      - name: Apply current 0.7.3 code and app name
+        run: |
+          cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_6_3.py
+          python3 hotfix/patch_0_6_4.py
+          python3 hotfix/patch_0_7_0.py
+          python3 hotfix/patch_0_7_1.py
+          python3 hotfix/patch_0_7_1_compile_fix.py
+          python3 hotfix/patch_0_7_2.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          for path in [
+              Path("project/app/src/main/AndroidManifest.xml"),
+              Path("project/app/src/main/res/values/strings.xml"),
+              Path("project/app/src/main/java/com/offlineai/app/MainActivity.kt"),
+              Path("project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt"),
+          ]:
+              if path.exists():
+                  text = path.read_text()
+                  text = text.replace("Offline AI", "İnternetsiz Yapay Zeka")
+                  path.write_text(text)
+
+          p = Path("project/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
+          if 'compilerOptions' not in s:
+              s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 13', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.7.3"', s)
+          p.write_text(s)
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build unsigned release AAB
+        run: gradle -p project :app:bundleRelease --stacktrace
+
+      - name: Create upload key and sign AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS=$(openssl rand -hex 20)
+          keytool -genkeypair \
+            -keystore upload-key.jks \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -alias offlineai-upload \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Internetsiz Yapay Zeka, OU=Android, O=Ilhan, L=Istanbul, ST=Istanbul, C=TR"
+
+          cp project/app/build/outputs/bundle/release/app-release.aab Internetsiz-Yapay-Zeka-0.7.3.aab
+          jarsigner \
+            -keystore upload-key.jks \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -sigalg SHA256withRSA \
+            -digestalg SHA-256 \
+            Internetsiz-Yapay-Zeka-0.7.3.aab \
+            offlineai-upload
+          jarsigner -verify -verbose -certs Internetsiz-Yapay-Zeka-0.7.3.aab
+
+          cat > upload-key-bilgileri.txt <<EOF
+          Uygulama: İnternetsiz Yapay Zeka
+          Paket: com.offlineai.app
+          Alias: offlineai-upload
+          Keystore parola: $PASS
+          Key parola: $PASS
+          Not: Bu dosyaları kaybetme. Sonraki Play Store güncellemelerinde aynı upload key gerekir.
+          EOF
+          zip -j Internetsiz-Yapay-Zeka-upload-key-yedek.zip upload-key.jks upload-key-bilgileri.txt
+
+      - name: Upload Play Store files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-Play-0.7.3
+          path: |
+            Internetsiz-Yapay-Zeka-0.7.3.aab
+            Internetsiz-Yapay-Zeka-upload-key-yedek.zip
