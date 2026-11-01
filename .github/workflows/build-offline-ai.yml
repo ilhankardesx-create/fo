@@ -14,8 +14,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unpack source
+      - name: Reconstruct and verify source
         run: |
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > OfflineAI-Prototype-0.6-source.zip
+          unzip -t OfflineAI-Prototype-0.6-source.zip
           mkdir project
           unzip -q OfflineAI-Prototype-0.6-source.zip -d project
 
@@ -34,7 +36,7 @@ jobs:
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: '8.13.0'
 
       - name: Build debug APK
         run: gradle -p project :app:assembleDebug --stacktrace
