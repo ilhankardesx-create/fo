@@ -7,12 +7,14 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -59,9 +61,11 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private val panel2 = Color.rgb(47, 47, 47)
     private val textColor = Color.rgb(245, 245, 242)
     private val muted = Color.rgb(170, 170, 166)
-    private val accent = Color.rgb(227, 126, 94)
+    private val logoBlue = Color.rgb(119, 169, 255)
 
     private lateinit var engine: LocalModelEngine
+    private lateinit var root: LinearLayout
+    private lateinit var composer: LinearLayout
     private lateinit var welcome: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var messages: LinearLayout
@@ -69,19 +73,21 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private lateinit var send: Button
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
+    private var baseScrollBottomPadding = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         engine = LocalModelEngine(this)
         buildUi()
+        installImeHandling()
         restoreModel()
     }
 
     private fun buildUi() {
-        val root = LinearLayout(this).apply {
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(8), dp(18), dp(16))
             setBackgroundColor(bg)
@@ -112,10 +118,10 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         content.addView(welcome, FrameLayout.LayoutParams(-1, -1))
 
         welcome.addView(TextView(this).apply {
-            text = "✳"
-            textSize = 54f
+            text = "◈"
+            textSize = 52f
             gravity = Gravity.CENTER
-            setTextColor(accent)
+            setTextColor(logoBlue)
         }, LinearLayout.LayoutParams(-1, dp(78)))
 
         welcome.addView(TextView(this).apply {
@@ -151,6 +157,8 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             clipToPadding = false
             setPadding(0, dp(8), 0, dp(12))
         }
+        baseScrollBottomPadding = scroll.paddingBottom
+
         messages = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(2), 0, dp(2), dp(16))
@@ -164,7 +172,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         )
         content.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
-        val composer = LinearLayout(this).apply {
+        composer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(7), dp(5), dp(7), dp(5))
@@ -213,6 +221,32 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         composer.addView(send, LinearLayout.LayoutParams(dp(56), dp(56)))
     }
 
+    private fun installImeHandling() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            root.setOnApplyWindowInsetsListener { _, insets ->
+                val imeBottom = insets.getInsets(WindowInsets.Type.ime()).bottom
+                val navBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+                val keyboardShift = if (imeBottom > navBottom) imeBottom - navBottom else 0
+
+                composer.translationY = -keyboardShift.toFloat()
+                scroll.setPadding(
+                    scroll.paddingLeft,
+                    scroll.paddingTop,
+                    scroll.paddingRight,
+                    baseScrollBottomPadding + keyboardShift + if (keyboardShift > 0) dp(78) else 0
+                )
+
+                if (keyboardShift > 0) {
+                    scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+                }
+                insets
+            }
+            root.requestApplyInsets()
+        } else {
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
+    }
+
     private fun showMenu(anchor: View) {
         PopupMenu(this, anchor).apply {
             menu.add("Model seç / içe aktar")
@@ -226,7 +260,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
                     "Modeli kaldır" -> removeModel()
                     "Hakkında" -> AlertDialog.Builder(this@MainActivity)
                         .setTitle("Offline AI")
-                        .setMessage("Prototype 0.2\nLiteRT-LM ile cihaz üzerinde yerel yapay zekâ.")
+                        .setMessage("Prototype 0.3\nLiteRT-LM ile cihaz üzerinde yerel yapay zekâ.")
                         .setPositiveButton("Tamam", null)
                         .show()
                 }
