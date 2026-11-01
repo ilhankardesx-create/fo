@@ -1,0 +1,92 @@
+name: Build Internetsiz Yapay Zeka 0.8.0 Gemma4 APK
+
+on:
+  push:
+    branches: [ "offline-ai-0.6-build" ]
+    paths:
+      - ".github/workflows/build-internetsiz-ai-0.8.0-gemma4-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        run: |
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > source.zip
+          unzip -t source.zip
+          mkdir project
+          unzip -q source.zip -d project
+
+      - name: Apply current base and Gemma 4 patch
+        run: |
+          cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_6_3.py
+          python3 hotfix/patch_0_6_4.py
+          python3 hotfix/patch_0_7_0.py
+          python3 hotfix/patch_0_7_1.py
+          python3 hotfix/patch_0_7_1_compile_fix.py
+          python3 hotfix/patch_0_7_2.py
+          cp hotfix/LocalModelEngine_0_7_5.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_7_5.py
+          python3 hotfix/patch_0_8_0_gemma4.py
+          cp hotfix/LocalModelEngine_0_8_0.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          manifest = Path("project/app/src/main/AndroidManifest.xml")
+          m = manifest.read_text().replace('android:label="Offline AI"', 'android:label="İnternetsiz Yapay Zeka"')
+          manifest.write_text(m)
+
+          p = Path("project/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
+          if 'compilerOptions' not in s:
+              s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          s = re.sub(r'applicationId\s*=\s*"[^"]+"', 'applicationId = "com.internetsizyapayzeka.app2026"', s)
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 16', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.8.0-gemma4"', s)
+          p.write_text(s)
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build release APK
+        run: gradle -p project :app:assembleRelease --stacktrace
+
+      - name: Stage unsigned APK
+        run: |
+          cp project/app/build/outputs/apk/release/app-release-unsigned.apk Internetsiz-Yapay-Zeka-0.8.0-Gemma4-unsigned.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-0.8.0-Gemma4-unsigned
+          path: Internetsiz-Yapay-Zeka-0.8.0-Gemma4-unsigned.apk
