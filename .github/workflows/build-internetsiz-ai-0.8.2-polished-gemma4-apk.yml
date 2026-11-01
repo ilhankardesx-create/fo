@@ -1,0 +1,120 @@
+name: Build Internetsiz Yapay Zeka 0.8.2 Polished Gemma4 APK
+
+on:
+  push:
+    branches: [ "offline-ai-0.6-build" ]
+    paths:
+      - ".github/workflows/build-internetsiz-ai-0.8.2-polished-gemma4-apk.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct source
+        run: |
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > source.zip
+          unzip -t source.zip
+          mkdir project
+          unzip -q source.zip -d project
+
+      - name: Apply Gemma 4 polished balanced build
+        run: |
+          cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_6_3.py
+          python3 hotfix/patch_0_6_4.py
+          python3 hotfix/patch_0_7_0.py
+          python3 hotfix/patch_0_7_1.py
+          python3 hotfix/patch_0_7_1_compile_fix.py
+          python3 hotfix/patch_0_7_2.py
+          cp hotfix/LocalModelEngine_0_7_5.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_7_5.py
+          python3 hotfix/patch_0_8_0_gemma4.py
+          cp hotfix/LocalModelEngine_0_8_1_fast.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_8_1_fast_ui.py
+          cp hotfix/LocalModelEngine_0_8_2_balanced.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          python3 hotfix/patch_0_8_2_polished_ui.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          manifest = Path("project/app/src/main/AndroidManifest.xml")
+          m = manifest.read_text().replace('android:label="Offline AI"', 'android:label="İnternetsiz Yapay Zeka"')
+          manifest.write_text(m)
+          p = Path("project/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
+          if 'compilerOptions' not in s:
+              s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          s = re.sub(r'applicationId\s*=\s*"[^"]+"', 'applicationId = "com.internetsizyapayzeka.app2026"', s)
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 18', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.8.2-polished"', s)
+          p.write_text(s)
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Build release APK
+        run: gradle -p project :app:assembleRelease --stacktrace
+
+      - name: Download existing 0.7.4 upload key
+        uses: actions/download-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-Play-0.7.4
+          path: old-play
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ilhankardesx-create/fo
+          run-id: 41315500954
+
+      - name: Sign and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir signing
+          unzip -q old-play/Internetsiz-Yapay-Zeka-upload-key-yedek-0.7.4.zip -d signing
+          PASS=$(sed -n 's/^Keystore parola: //p' signing/upload-key-bilgileri.txt | head -n1)
+          test -n "$PASS"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 \
+            project/app/build/outputs/apk/release/app-release-unsigned.apk \
+            Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks signing/upload-key.jks \
+            --ks-key-alias offlineai-upload \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4.apk \
+            Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs \
+            Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4
+          path: Internetsiz-Yapay-Zeka-0.8.2-Polished-Gemma4.apk
