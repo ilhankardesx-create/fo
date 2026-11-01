@@ -24,6 +24,17 @@ jobs:
           mkdir project
           unzip -q OfflineAI-Prototype-0.6-source.zip -d project
 
+      - name: Update Kotlin JVM target syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project/app/build.gradle.kts")
+          s = p.read_text()
+          s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
+          s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          p.write_text(s)
+          PY
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
