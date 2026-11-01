@@ -13,8 +13,8 @@ android {
         applicationId = "com.internetsizyapayzeka.app2026"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.9.0-clean"
+        versionCode = 24
+        versionName = "0.9.1-ui"
     }
 
     buildTypes {
