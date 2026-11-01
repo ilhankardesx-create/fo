@@ -28,7 +28,7 @@ jobs:
           mkdir project
           unzip -q source.zip -d project
 
-      - name: Apply current 0.7.3 code and app name
+      - name: Apply current code, app name and unique package id
         run: |
           cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
           cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
@@ -58,8 +58,9 @@ jobs:
           s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
           if 'compilerOptions' not in s:
               s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
-          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 13', s)
-          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.7.3"', s)
+          s = re.sub(r'applicationId\s*=\s*"[^"]+"', 'applicationId = "com.internetsizyapayzeka.app2026"', s)
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 14', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.7.4"', s)
           p.write_text(s)
           PY
 
@@ -97,31 +98,31 @@ jobs:
             -validity 10000 \
             -dname "CN=Internetsiz Yapay Zeka, OU=Android, O=Ilhan, L=Istanbul, ST=Istanbul, C=TR"
 
-          cp project/app/build/outputs/bundle/release/app-release.aab Internetsiz-Yapay-Zeka-0.7.3.aab
+          cp project/app/build/outputs/bundle/release/app-release.aab Internetsiz-Yapay-Zeka-0.7.4.aab
           jarsigner \
             -keystore upload-key.jks \
             -storepass "$PASS" \
             -keypass "$PASS" \
             -sigalg SHA256withRSA \
             -digestalg SHA-256 \
-            Internetsiz-Yapay-Zeka-0.7.3.aab \
+            Internetsiz-Yapay-Zeka-0.7.4.aab \
             offlineai-upload
-          jarsigner -verify -verbose -certs Internetsiz-Yapay-Zeka-0.7.3.aab
+          jarsigner -verify -verbose -certs Internetsiz-Yapay-Zeka-0.7.4.aab
 
           cat > upload-key-bilgileri.txt <<EOF
           Uygulama: İnternetsiz Yapay Zeka
-          Paket: com.offlineai.app
+          Paket: com.internetsizyapayzeka.app2026
           Alias: offlineai-upload
           Keystore parola: $PASS
           Key parola: $PASS
           Not: Bu dosyaları kaybetme. Sonraki Play Store güncellemelerinde aynı upload key gerekir.
           EOF
-          zip -j Internetsiz-Yapay-Zeka-upload-key-yedek.zip upload-key.jks upload-key-bilgileri.txt
+          zip -j Internetsiz-Yapay-Zeka-upload-key-yedek-0.7.4.zip upload-key.jks upload-key-bilgileri.txt
 
       - name: Upload Play Store files
         uses: actions/upload-artifact@v4
         with:
-          name: Internetsiz-Yapay-Zeka-Play-0.7.3
+          name: Internetsiz-Yapay-Zeka-Play-0.7.4
           path: |
-            Internetsiz-Yapay-Zeka-0.7.3.aab
-            Internetsiz-Yapay-Zeka-upload-key-yedek.zip
+            Internetsiz-Yapay-Zeka-0.7.4.aab
+            Internetsiz-Yapay-Zeka-upload-key-yedek-0.7.4.zip
