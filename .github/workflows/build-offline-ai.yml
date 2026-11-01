@@ -1,4 +1,4 @@
-name: Build Offline AI 0.6 APK
+name: Build Offline AI 0.6.1 APK
 
 on:
   push:
@@ -24,25 +24,193 @@ jobs:
           mkdir project
           unzip -q OfflineAI-Prototype-0.6-source.zip -d project
 
-      - name: Apply Kotlin compatibility fixes
+      - name: Apply 0.6.1 stability hotfix
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
+          # Kotlin/Android compatibility fixes from the successful 0.6 build.
           p = Path("project/app/build.gradle.kts")
           s = p.read_text()
+          s = s.replace('versionCode = 6', 'versionCode = 7')
+          s = s.replace('versionName = "0.6-prototype"', 'versionName = "0.6.1-hotfix"')
           s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
-          s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          if 'kotlin {\n    compilerOptions' not in s:
+              s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
           p.write_text(s)
 
           m = Path("project/app/src/main/java/com/offlineai/app/MainActivity.kt")
           t = m.read_text()
           t = t.replace('ScrollView.LayoutParams(', 'FrameLayout.LayoutParams(')
           t = t.replace('isTextSelectable = true', 'setTextIsSelectable(true)')
+          t = t.replace('Offline AI · Prototype 0.6', 'Offline AI · Prototype 0.6.1')
           m.write_text(t)
+
+          # Startup/model hotfix: restore the exact engine lifecycle that worked in 0.5.
+          # Deep thinking remains mandatory, but it is enabled per-message with a bounded
+          # budget instead of being forced while the native conversation is created.
+          e = Path("project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt")
+          e.write_text(r'''package com.offlineai.app
+
+import android.content.Context
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
+import java.util.concurrent.Executors
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+class LocalModelEngine(private val context: Context) {
+
+    enum class ActiveBackend { GPU, CPU_8 }
+
+    private val executor = Executors.newSingleThreadExecutor()
+    private val dispatcher = executor.asCoroutineDispatcher()
+    private val mutex = Mutex()
+
+    private var engine: Engine? = null
+    private var conversation: Conversation? = null
+    private var loadedPath: String? = null
+
+    @Volatile private var busy = false
+
+    @Volatile
+    var activeBackend: ActiveBackend? = null
+        private set
+
+    val isLoaded: Boolean
+        get() = engine != null && conversation != null
+
+    suspend fun load(modelPath: String) = withContext(dispatcher) {
+        mutex.withLock {
+            if (loadedPath == modelPath && isLoaded) return@withLock
+            releaseInternal()
+
+            val gpuAttempt = runCatching {
+                createEngine(modelPath, Backend.GPU())
+            }
+
+            val loaded: Pair<Engine, Conversation>
+            val backend: ActiveBackend
+
+            if (gpuAttempt.isSuccess) {
+                loaded = gpuAttempt.getOrThrow()
+                backend = ActiveBackend.GPU
+            } else {
+                loaded = createEngine(modelPath, Backend.CPU(threadCount = 8))
+                backend = ActiveBackend.CPU_8
+            }
+
+            engine = loaded.first
+            conversation = loaded.second
+            loadedPath = modelPath
+            activeBackend = backend
+        }
+    }
+
+    private fun createEngine(modelPath: String, backend: Backend): Pair<Engine, Conversation> {
+        val candidate = Engine(
+            EngineConfig(
+                modelPath = modelPath,
+                backend = backend,
+                maxNumTokens = 2048,
+                cacheDir = context.cacheDir.absolutePath
+            )
+        )
+        try {
+            candidate.initialize()
+            val candidateConversation = candidate.createConversation(conversationConfig())
+            return candidate to candidateConversation
+        } catch (t: Throwable) {
+            runCatching { candidate.close() }
+            throw t
+        }
+    }
+
+    fun streamReply(prompt: String): Flow<String> = channelFlow {
+        withContext(dispatcher) {
+            if (busy) error("Model şu anda yanıt üretiyor")
+            val conv = conversation ?: error("Model yüklenmedi")
+            busy = true
+            try {
+                conv.sendMessageAsync(
+                    prompt,
+                    maxOutputToken = 1024,
+                    thinkingConfig = ThinkingConfig(
+                        enableThinking = true,
+                        thinkingTokenBudget = 512
+                    )
+                ).collect { message ->
+                    val answer = message.toString()
+                    if (answer.isNotEmpty()) send(answer)
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    suspend fun resetConversation() = withContext(dispatcher) {
+        mutex.withLock {
+            stopGenerationIfNeeded()
+            conversation?.close()
+            conversation = engine?.createConversation(conversationConfig())
+        }
+    }
+
+    suspend fun closeModel() = withContext(dispatcher) {
+        mutex.withLock { releaseInternal() }
+    }
+
+    private fun conversationConfig() = ConversationConfig(
+        systemInstruction = Contents.of(
+            "Sen Offline AI adlı yerel çalışan yardımcı bir asistansın. " +
+                "Kullanıcının yazdığı dilde cevap ver. Türkçe yazıyorsa doğal ve akıcı Türkçe cevap ver. " +
+                "Soruyu dikkatlice değerlendir ve yalnızca sonuç cevabını kullanıcıya sun. " +
+                "Sonuç odaklı, doğru ve anlaşılır cevap ver. Kullanıcı ayrıntı isterse ayrıntılı ol."
+        ),
+        maxOutputToken = 768,
+        thinkingConfig = ThinkingConfig(enableThinking = false)
+    )
+
+    private suspend fun releaseInternal() {
+        stopGenerationIfNeeded()
+        conversation?.close()
+        conversation = null
+        engine?.close()
+        engine = null
+        loadedPath = null
+        activeBackend = null
+    }
+
+    private suspend fun stopGenerationIfNeeded() {
+        while (busy) {
+            conversation?.cancelProcess()
+            delay(50)
+        }
+    }
+
+    fun shutdownBlocking() {
+        runBlocking { runCatching { closeModel() } }
+        dispatcher.close()
+        executor.shutdown()
+    }
+}
+''')
           PY
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -61,10 +229,10 @@ jobs:
         run: gradle -p project :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.6.apk
+        run: cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.6.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Offline-AI-Prototype-0.6
-          path: Offline-AI-Prototype-0.6.apk
+          name: Offline-AI-Prototype-0.6.1
+          path: Offline-AI-Prototype-0.6.1.apk
