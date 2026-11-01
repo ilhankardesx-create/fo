@@ -1,4 +1,4 @@
-name: Build Offline AI 0.6.1 APK
+name: Build Offline AI 0.6.2 APK
 
 on:
   push:
@@ -19,35 +19,30 @@ jobs:
 
       - name: Reconstruct source
         run: |
-          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > OfflineAI-Prototype-0.6-source.zip
-          unzip -t OfflineAI-Prototype-0.6-source.zip
+          cat parts/source.part01 parts/source.part02 parts/source.part03 parts/source.part04 parts/source.part05 | base64 -d > source.zip
+          unzip -t source.zip
           mkdir project
-          unzip -q OfflineAI-Prototype-0.6-source.zip -d project
+          unzip -q source.zip -d project
 
-      - name: Apply 0.6.1 fixes
+      - name: Apply 0.6.2 safe-start fixes
         run: |
-          cp hotfix/LocalModelEngine.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
+          cp hotfix/MainActivity_0_6_2.kt project/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cp hotfix/LocalModelEngine_0_6_2.kt project/app/src/main/java/com/offlineai/app/LocalModelEngine.kt
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('project/app/build.gradle.kts')
+          import re
+          p = Path("project/app/build.gradle.kts")
           s = p.read_text()
-          s = s.replace('versionCode = 6', 'versionCode = 7')
-          s = s.replace('versionName = "0.6-prototype"', 'versionName = "0.6.1-hotfix"')
           s = s.replace('''    kotlinOptions {\n        jvmTarget = "17"\n    }\n\n''', '')
-          if 'kotlin {\n    compilerOptions' not in s:
+          if 'compilerOptions' not in s:
               s += '''\n\nkotlin {\n    compilerOptions {\n        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)\n    }\n}\n'''
+          s = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 7', s)
+          s = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.6.2-prototype"', s)
           p.write_text(s)
-
-          m = Path('project/app/src/main/java/com/offlineai/app/MainActivity.kt')
-          t = m.read_text()
-          t = t.replace('ScrollView.LayoutParams(', 'FrameLayout.LayoutParams(')
-          t = t.replace('isTextSelectable = true', 'setTextIsSelectable(true)')
-          t = t.replace('Offline AI · Prototype 0.6', 'Offline AI · Prototype 0.6.1')
-          m.write_text(t)
           PY
 
       - name: Set up Java 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -66,10 +61,10 @@ jobs:
         run: gradle -p project :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.6.1.apk
+        run: cp project/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.6.2.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Offline-AI-Prototype-0.6.1
-          path: Offline-AI-Prototype-0.6.1.apk
+          name: Offline-AI-Prototype-0.6.2
+          path: Offline-AI-Prototype-0.6.2.apk
