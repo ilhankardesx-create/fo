@@ -30,9 +30,11 @@ jobs:
             "https://api.github.com/repos/${{ github.repository }}/git/blobs/54d1764e7646465c2840e0af33645adc0bb42b54" \
             | jq -r '.content' | tr -d '\n' | base64 -d \
             > offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          sed -i 's/com.tom_roush.pdfbox.util.PDFBoxResourceLoader/com.tom_roush.pdfbox.android.PDFBoxResourceLoader/' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'showModelsDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'extractPdfText' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'com.tom_roush.pdfbox.android.PDFBoxResourceLoader' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -s offline-ai/app/src/main/res/drawable/ic_app_logo.xml
 
       - uses: actions/setup-java@v5
