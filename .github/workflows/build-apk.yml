@@ -1,16 +1,14 @@
-name: Build PDF to EPUB APK
+name: Build Offline AI APK
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [ "offline-ai-apk-build" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -28,19 +26,19 @@ jobs:
       - name: Install Android 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Set up Gradle 9.6
+      - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.6.0'
+          gradle-version: '8.13'
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Build Offline AI debug APK
+        run: gradle -p offlineai :app:assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk PDF-to-EPUB-v1.apk
+        run: cp offlineai/app/build/outputs/apk/debug/app-debug.apk Offline-AI-Prototype-0.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PDF-to-EPUB-v1
-          path: PDF-to-EPUB-v1.apk
+          name: Offline-AI-Prototype-0.1
+          path: Offline-AI-Prototype-0.1.apk
