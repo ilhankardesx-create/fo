@@ -56,7 +56,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private val bg = Color.rgb(18, 18, 18)
     private val panel = Color.rgb(34, 34, 34)
     private val panel2 = Color.rgb(47, 47, 47)
-    private val text = Color.rgb(245, 245, 242)
+    private val textColor = Color.rgb(245, 245, 242)
     private val muted = Color.rgb(170, 170, 166)
     private val accent = Color.rgb(227, 126, 94)
 
@@ -102,7 +102,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             text = "✦"
             textSize = 29f
             gravity = Gravity.CENTER
-            setTextColor(text)
+            setTextColor(textColor)
         }, LinearLayout.LayoutParams(dp(52), dp(52)))
 
         val content = FrameLayout(this)
@@ -127,7 +127,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             textSize = 36f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setTextColor(text)
+            setTextColor(textColor)
         }, LinearLayout.LayoutParams(-1, -2))
 
         welcome.addView(TextView(this).apply {
@@ -141,7 +141,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             text = "Model seçilmedi"
             textSize = 14f
             gravity = Gravity.CENTER
-            setTextColor(text)
+            setTextColor(textColor)
             background = rounded(panel2, 99f)
             setPadding(dp(18), dp(11), dp(18), dp(11))
         }
@@ -159,7 +159,13 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(2), 0, dp(2), dp(16))
         }
-        scroll.addView(messages, ScrollView.LayoutParams(-1, -2))
+        scroll.addView(
+            messages,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
         content.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
         val composer = LinearLayout(this).apply {
@@ -178,7 +184,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         input = EditText(this).apply {
             hint = "Bir şey sorun…"
             setHintTextColor(muted)
-            setTextColor(text)
+            setTextColor(textColor)
             textSize = 17f
             background = null
             maxLines = 4
@@ -187,15 +193,20 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             setPadding(dp(14), 0, dp(10), 0)
             setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
-                    sendCurrentMessage(); true
-                } else false
+                    sendCurrentMessage()
+                    true
+                } else {
+                    false
+                }
             }
         }
         composer.addView(input, LinearLayout.LayoutParams(0, -1, 1f))
 
         composer.addView(roundButton("●", panel).apply {
             setTextColor(muted)
-            setOnClickListener { Toast.makeText(this@MainActivity, "Sesli giriş sonraki sürümde.", Toast.LENGTH_SHORT).show() }
+            setOnClickListener {
+                Toast.makeText(this@MainActivity, "Sesli giriş sonraki sürümde.", Toast.LENGTH_SHORT).show()
+            }
         }, LinearLayout.LayoutParams(dp(48), dp(48)))
 
         send = roundButton("↑", Color.WHITE).apply {
@@ -308,11 +319,13 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             Toast.makeText(this, "Önce + ile bir .litertlm model seç.", Toast.LENGTH_LONG).show()
             return
         }
+
         input.setText("")
         showConversation()
         addBubble(prompt, true)
         val answer = addBubble("", false)
         send.isEnabled = false
+
         launch {
             runCatching {
                 engine.streamReply(prompt).collect { chunk ->
@@ -352,7 +365,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         val bubble = TextView(this).apply {
             text = value
             textSize = 17f
-            setTextColor(text)
+            setTextColor(textColor)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             background = rounded(if (user) panel2 else Color.TRANSPARENT, 20f)
         }
@@ -369,16 +382,16 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     }
 
     private fun displayName(uri: Uri): String {
-        contentResolver.query(uri, null, null, null, null)?.use { c ->
-            val index = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && c.moveToFirst()) return c.getString(index)
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) return cursor.getString(index)
         }
         return "model.litertlm"
     }
 
     private fun roundButton(label: String, color: Int) = Button(this).apply {
         text = label
-        setTextColor(text)
+        setTextColor(textColor)
         textSize = 20f
         gravity = Gravity.CENTER
         background = rounded(color, 99f)
@@ -413,14 +426,17 @@ class LocalModelEngine(private val context: android.content.Context) {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var loadedPath: String? = null
-    @Volatile private var busy = false
+    @Volatile
+    private var busy = false
 
-    val isLoaded: Boolean get() = engine != null && conversation != null
+    val isLoaded: Boolean
+        get() = engine != null && conversation != null
 
     suspend fun load(modelPath: String) = withContext(dispatcher) {
         mutex.withLock {
             if (loadedPath == modelPath && isLoaded) return@withLock
             releaseInternal()
+
             val candidate = Engine(
                 EngineConfig(
                     modelPath = modelPath,
