@@ -20,6 +20,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.ProgressBar
@@ -27,14 +28,18 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.ThinkingConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
@@ -54,6 +59,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         private const val PREFS = "offline_ai_prefs"
         private const val KEY_MODEL_PATH = "model_path"
         private const val KEY_MODEL_NAME = "model_name"
+        private const val KEY_THINKING = "thinking_enabled"
     }
 
     private val bg = Color.rgb(18, 18, 18)
@@ -61,7 +67,6 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private val panel2 = Color.rgb(47, 47, 47)
     private val textColor = Color.rgb(245, 245, 242)
     private val muted = Color.rgb(170, 170, 166)
-    private val logoBlue = Color.rgb(119, 169, 255)
 
     private lateinit var engine: LocalModelEngine
     private lateinit var root: LinearLayout
@@ -74,13 +79,18 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private var baseScrollBottomPadding = 0
+    private var thinkingEnabled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = bg
         window.navigationBarColor = bg
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-        engine = LocalModelEngine(this)
+
+        thinkingEnabled = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_THINKING, false)
+
+        engine = LocalModelEngine(this, thinkingEnabled)
         buildUi()
         installImeHandling()
         restoreModel()
@@ -117,12 +127,13 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         }
         content.addView(welcome, FrameLayout.LayoutParams(-1, -1))
 
-        welcome.addView(TextView(this).apply {
-            text = "◈"
-            textSize = 52f
-            gravity = Gravity.CENTER
-            setTextColor(logoBlue)
-        }, LinearLayout.LayoutParams(-1, dp(78)))
+        welcome.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_offline_ai_logo)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Offline AI logo"
+        }, LinearLayout.LayoutParams(dp(84), dp(84)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+        })
 
         welcome.addView(TextView(this).apply {
             text = "Offline AI"
@@ -130,7 +141,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
             setTextColor(textColor)
-        }, LinearLayout.LayoutParams(-1, -2))
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
 
         welcome.addView(TextView(this).apply {
             text = "İnternetsiz. Cihazın içinde."
@@ -175,15 +186,10 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         composer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(7), dp(5), dp(7), dp(5))
+            setPadding(dp(12), dp(5), dp(7), dp(5))
             background = strokeRounded(panel, Color.rgb(68, 68, 68), 99f)
         }
         root.addView(composer, LinearLayout.LayoutParams(-1, dp(70)))
-
-        composer.addView(roundButton("+", panel2).apply {
-            textSize = 29f
-            setOnClickListener { chooseModel() }
-        }, LinearLayout.LayoutParams(dp(56), dp(56)))
 
         input = EditText(this).apply {
             hint = "Bir şey sorun…"
@@ -192,9 +198,11 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             textSize = 17f
             background = null
             maxLines = 4
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_ACTION_SEND
-            setPadding(dp(14), 0, dp(10), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
                     sendCurrentMessage()
@@ -251,16 +259,22 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         PopupMenu(this, anchor).apply {
             menu.add("Model seç / içe aktar")
             menu.add("Yeni sohbet")
+            menu.add(if (thinkingEnabled) "Derin düşünme: Açık ✓" else "Derin düşünme: Kapalı")
             menu.add("Modeli kaldır")
             menu.add("Hakkında")
             setOnMenuItemClickListener { item ->
-                when (item.title.toString()) {
-                    "Model seç / içe aktar" -> chooseModel()
-                    "Yeni sohbet" -> newChat()
-                    "Modeli kaldır" -> removeModel()
-                    "Hakkında" -> AlertDialog.Builder(this@MainActivity)
+                when {
+                    item.title.toString() == "Model seç / içe aktar" -> chooseModel()
+                    item.title.toString() == "Yeni sohbet" -> newChat()
+                    item.title.toString().startsWith("Derin düşünme:") -> toggleThinking()
+                    item.title.toString() == "Modeli kaldır" -> removeModel()
+                    item.title.toString() == "Hakkında" -> AlertDialog.Builder(this@MainActivity)
                         .setTitle("Offline AI")
-                        .setMessage("Prototype 0.3\nLiteRT-LM ile cihaz üzerinde yerel yapay zekâ.")
+                        .setMessage(
+                            "Prototype 0.4\n" +
+                                "GPU hızlandırma açık.\n" +
+                                "Derin düşünme varsayılan olarak kapalı."
+                        )
                         .setPositiveButton("Tamam", null)
                         .show()
                 }
@@ -268,6 +282,19 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
             }
             show()
         }
+    }
+
+    private fun toggleThinking() {
+        thinkingEnabled = !thinkingEnabled
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_THINKING, thinkingEnabled)
+            .apply()
+        engine.setThinking(thinkingEnabled)
+        Toast.makeText(
+            this,
+            if (thinkingEnabled) "Derin düşünme açıldı." else "Derin düşünme kapatıldı.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun chooseModel() {
@@ -293,7 +320,7 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
 
     private fun importAndLoad(uri: Uri, name: String) {
         progress.visibility = View.VISIBLE
-        status.text = "Model hazırlanıyor…"
+        status.text = "Model GPU için hazırlanıyor…"
         launch {
             runCatching {
                 val modelFile = withContext(Dispatchers.IO) {
@@ -311,12 +338,16 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
                     .apply()
             }.onSuccess {
                 progress.visibility = View.GONE
-                status.text = "✓ $name"
-                Toast.makeText(this@MainActivity, "Model hazır.", Toast.LENGTH_SHORT).show()
+                status.text = "✓ $name · GPU"
+                Toast.makeText(this@MainActivity, "Model GPU üzerinde hazır.", Toast.LENGTH_SHORT).show()
             }.onFailure {
                 progress.visibility = View.GONE
-                status.text = "Model yüklenemedi"
-                Toast.makeText(this@MainActivity, it.message ?: "Model hatası", Toast.LENGTH_LONG).show()
+                status.text = "GPU modeli yükleyemedi"
+                Toast.makeText(
+                    this@MainActivity,
+                    it.message ?: "GPU model hatası",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -328,16 +359,21 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         val file = File(path)
         if (!file.exists()) return
         progress.visibility = View.VISIBLE
-        status.text = "Model açılıyor…"
+        status.text = "Model GPU'da açılıyor…"
         launch {
             runCatching { engine.load(path) }
                 .onSuccess {
                     progress.visibility = View.GONE
-                    status.text = "✓ $name"
+                    status.text = "✓ $name · GPU"
                 }
                 .onFailure {
                     progress.visibility = View.GONE
                     status.text = "Model tekrar seçilmeli"
+                    Toast.makeText(
+                        this@MainActivity,
+                        it.message ?: "GPU modeli açılamadı",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
         }
     }
@@ -346,7 +382,11 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         val prompt = input.text.toString().trim()
         if (prompt.isEmpty()) return
         if (!engine.isLoaded) {
-            Toast.makeText(this, "Önce + ile bir .litertlm model seç.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                this,
+                "Önce sol üst menüden bir .litertlm model seç.",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
 
@@ -354,18 +394,42 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
         showConversation()
         addBubble(prompt, true)
         val answer = addBubble("", false)
+        val typingJob = startTypingAnimation(answer)
         send.isEnabled = false
 
         launch {
+            var firstChunk = true
             runCatching {
                 engine.streamReply(prompt).collect { chunk ->
+                    if (firstChunk) {
+                        firstChunk = false
+                        typingJob.cancel()
+                        answer.text = ""
+                    }
                     answer.append(chunk)
                     scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
                 }
             }.onFailure {
+                typingJob.cancel()
                 answer.text = "Hata: ${it.message ?: "yanıt üretilemedi"}"
             }
+
+            typingJob.cancel()
+            if (firstChunk && answer.text.isBlank()) {
+                answer.text = "Yanıt üretilemedi."
+            }
             send.isEnabled = true
+        }
+    }
+
+    private fun startTypingAnimation(target: TextView): Job = launch {
+        val frames = arrayOf("●", "● ●", "● ● ●")
+        var index = 0
+        while (true) {
+            target.text = frames[index % frames.size]
+            index++
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+            delay(320)
         }
     }
 
@@ -379,7 +443,11 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     private fun removeModel() {
         launch {
             runCatching { engine.closeModel() }
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply()
+            val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+            prefs.edit()
+                .remove(KEY_MODEL_PATH)
+                .remove(KEY_MODEL_NAME)
+                .apply()
             File(filesDir, "models/model.litertlm").delete()
             status.text = "Model seçilmedi"
             newChat()
@@ -449,18 +517,29 @@ class MainActivity : Activity(), CoroutineScope by MainScope() {
     }
 }
 
-class LocalModelEngine(private val context: android.content.Context) {
+class LocalModelEngine(
+    private val context: android.content.Context,
+    initialThinkingEnabled: Boolean = false,
+) {
     private val executor = Executors.newSingleThreadExecutor()
     private val dispatcher = executor.asCoroutineDispatcher()
     private val mutex = Mutex()
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var loadedPath: String? = null
+
     @Volatile
     private var busy = false
 
+    @Volatile
+    private var thinkingEnabled = initialThinkingEnabled
+
     val isLoaded: Boolean
         get() = engine != null && conversation != null
+
+    fun setThinking(enabled: Boolean) {
+        thinkingEnabled = enabled
+    }
 
     suspend fun load(modelPath: String) = withContext(dispatcher) {
         mutex.withLock {
@@ -470,12 +549,12 @@ class LocalModelEngine(private val context: android.content.Context) {
             val candidate = Engine(
                 EngineConfig(
                     modelPath = modelPath,
-                    backend = Backend.CPU(),
+                    backend = Backend.GPU(),
                     cacheDir = context.cacheDir.absolutePath
                 )
             )
             candidate.initialize()
-            val candidateConversation = candidate.createConversation()
+            val candidateConversation = candidate.createConversation(conversationConfig())
             engine = candidate
             conversation = candidateConversation
             loadedPath = modelPath
@@ -488,7 +567,14 @@ class LocalModelEngine(private val context: android.content.Context) {
             val conv = conversation ?: error("Model yüklenmedi")
             busy = true
             try {
-                conv.sendMessageAsync(prompt).collect { send(it.toString()) }
+                conv.sendMessageAsync(
+                    prompt,
+                    maxOutputToken = if (thinkingEnabled) 1024 else 768,
+                    thinkingConfig = ThinkingConfig(
+                        enableThinking = thinkingEnabled,
+                        thinkingTokenBudget = if (thinkingEnabled) 512 else -1
+                    )
+                ).collect { send(it.toString()) }
             } finally {
                 busy = false
             }
@@ -499,13 +585,23 @@ class LocalModelEngine(private val context: android.content.Context) {
         mutex.withLock {
             stopGenerationIfNeeded()
             conversation?.close()
-            conversation = engine?.createConversation()
+            conversation = engine?.createConversation(conversationConfig())
         }
     }
 
     suspend fun closeModel() = withContext(dispatcher) {
         mutex.withLock { releaseInternal() }
     }
+
+    private fun conversationConfig() = ConversationConfig(
+        systemInstruction = Contents.of(
+            "Sen Offline AI adlı yardımcı bir asistansın. " +
+                "Kullanıcının yazdığı dilde cevap ver. Kullanıcı Türkçe yazıyorsa doğal ve akıcı Türkçe cevap ver. " +
+                "Gereksiz yere uzun cevap verme; kullanıcı ayrıntı isterse ayrıntılı ol."
+        ),
+        maxOutputToken = 768,
+        thinkingConfig = ThinkingConfig(enableThinking = false)
+    )
 
     private suspend fun releaseInternal() {
         stopGenerationIfNeeded()
