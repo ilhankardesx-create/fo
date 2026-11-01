@@ -1,4 +1,5 @@
 name: Build İnternetsiz Yapay Zeka 0.7.5 Quality Fix APK
+# retry after formatter patch alignment
 
 on:
   push:
