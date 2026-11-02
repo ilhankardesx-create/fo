@@ -33,28 +33,48 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore Offline AI source
+      - name: Restore and verify Offline AI source
         run: |
-          cat offline-ai-build/source_part_*.b64 > /tmp/offline-ai-source.b64
+          set -euxo pipefail
+          cat \
+            offline-ai-build/source_part_1.b64 \
+            offline-ai-build/source_part_2.b64 \
+            offline-ai-build/source_part_3a.b64 \
+            offline-ai-build/source_part_3b.b64 \
+            offline-ai-build/source_part_3c.b64 \
+            offline-ai-build/source_part_3d.b64 \
+            > /tmp/offline-ai-source.b64
+          test "$(wc -c < /tmp/offline-ai-source.b64)" -eq 31304
           base64 --decode /tmp/offline-ai-source.b64 > /tmp/offline-ai-source.zip
+          echo "7124caf66eb15d3306f5f8bad8802565500a2c9a8b67a2cb2397e0f3521e5dd2  /tmp/offline-ai-source.zip" | sha256sum -c -
+          unzip -t /tmp/offline-ai-source.zip
           mkdir -p offlineai
           unzip -q /tmp/offline-ai-source.zip -d offlineai
           sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
 
       - name: Verify release identity
         run: |
+          set -euxo pipefail
           grep 'applicationId = "com.internetsizyapayzeka.app2026"' offlineai/app/build.gradle.kts
           grep 'versionCode = 100' offlineai/app/build.gradle.kts
           grep 'versionName = "1.0"' offlineai/app/build.gradle.kts
           grep 'android:label="İnternetsiz Yapay Zeka"' offlineai/app/src/main/AndroidManifest.xml
           grep 'moonlauncher/moon-models/resolve/main/gemma/gemma3-1b-it-int4.litertlm' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep 'DownloadManager' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          test -f offlineai/app/src/main/res/drawable-nodpi/app_icon.webp
 
       - name: Build APK normally with Gradle
         run: gradle -p offlineai :app:assembleDebug --stacktrace
 
-      - name: Prepare APK
-        run: cp offlineai/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.0.apk
+      - name: Verify APK
+        run: |
+          set -euxo pipefail
+          APK=offlineai/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          cp "$APK" Internetsiz-Yapay-Zeka-1.0.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
