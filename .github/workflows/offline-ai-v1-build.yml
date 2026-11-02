@@ -52,6 +52,8 @@ jobs:
           unzip -q /tmp/offline-ai-source.zip -d offlineai
           sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
           sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
+          sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           cat >> offlineai/app/build.gradle.kts <<'EOF'
 
           kotlin {
@@ -72,6 +74,8 @@ jobs:
           grep 'DownloadManager' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -f offlineai/app/src/main/res/drawable-nodpi/app_icon.webp
           grep 'JvmTarget.JVM_17' offlineai/app/build.gradle.kts
+          test "$(grep -c 'FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt)" -ge 2
+          grep 'setTextIsSelectable(true)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
 
       - name: Build APK normally with Gradle
         run: gradle -p offlineai :app:assembleDebug --stacktrace
@@ -83,6 +87,9 @@ jobs:
           test -s "$APK"
           unzip -t "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep "package: name='com.internetsizyapayzeka.app2026' versionCode='100' versionName='1.0'" /tmp/badging.txt
+          grep "application-label:'İnternetsiz Yapay Zeka'" /tmp/badging.txt
           cp "$APK" Internetsiz-Yapay-Zeka-1.0.apk
           sha256sum Internetsiz-Yapay-Zeka-1.0.apk
 
