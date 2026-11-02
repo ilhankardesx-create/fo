@@ -1,14 +1,14 @@
-name: Build Offline AI 1.0
+name: Build Offline AI 1.1
 
 on:
   push:
-    branches: [ "offline-ai-v1-build" ]
+    branches: [ "offline-ai-v1.1-build" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-runtime-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -33,7 +33,7 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore and verify Offline AI source
+      - name: Restore proven 1.0 source and apply only v1.1 feature patch
         run: |
           set -euxo pipefail
           cat \
@@ -50,6 +50,9 @@ jobs:
           unzip -t /tmp/offline-ai-source.zip
           mkdir -p offlineai
           unzip -q /tmp/offline-ai-source.zip -d offlineai
+
+          patch -d offlineai -p0 < offline-ai-build/v1.1-ui-history-theme.patch
+
           sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
           sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
           sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
@@ -59,7 +62,7 @@ jobs:
           p = Path('offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt')
           s = p.read_text()
           old = "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n"
-          assert old in s, 'startup WindowInsetsController block not found'
+          assert old in s, 'verified startup crash block not found'
           p.write_text(s.replace(old, '', 1))
           PY
           cat >> offlineai/app/build.gradle.kts <<'EOF'
@@ -71,20 +74,30 @@ jobs:
           }
           EOF
 
-      - name: Verify release identity
+      - name: Verify requested changes and release identity
         run: |
           set -euxo pipefail
+          MAIN=offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep 'applicationId = "com.internetsizyapayzeka.app2026"' offlineai/app/build.gradle.kts
-          grep 'versionCode = 100' offlineai/app/build.gradle.kts
-          grep 'versionName = "1.0"' offlineai/app/build.gradle.kts
+          grep 'versionCode = 101' offlineai/app/build.gradle.kts
+          grep 'versionName = "1.1"' offlineai/app/build.gradle.kts
           grep 'android:label="İnternetsiz Yapay Zeka"' offlineai/app/src/main/AndroidManifest.xml
-          grep 'moonlauncher/moon-models/resolve/main/gemma/gemma3-1b-it-int4.litertlm' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
-          grep 'DownloadManager' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep 'menu.add("Model İndir")' "$MAIN"
+          grep 'menu.add("Sohbet geçmişi")' "$MAIN"
+          grep 'menu.add("Tema")' "$MAIN"
+          grep 'private fun showChatHistory()' "$MAIN"
+          grep 'private fun showThemeDialog()' "$MAIN"
+          grep 'KEY_CHAT_HISTORY' "$MAIN"
+          grep 'Theme_OfflineAILight' "$MAIN"
+          grep 'Cihazınızın RAM ve işlem gücüne göre model kullanın' "$MAIN"
+          ! grep -q 'val topTitle' "$MAIN"
+          ! grep -q 'window.insetsController' "$MAIN"
+          grep 'LinearLayout.LayoutParams(dp(48), dp(48))' "$MAIN"
+          grep 'moonlauncher/moon-models/resolve/main/gemma/gemma3-1b-it-int4.litertlm' "$MAIN"
+          grep 'DownloadManager' "$MAIN"
           test -f offlineai/app/src/main/res/drawable-nodpi/app_icon.webp
+          grep 'Theme.OfflineAILight' offlineai/app/src/main/res/values/themes.xml
           grep 'JvmTarget.JVM_17' offlineai/app/build.gradle.kts
-          test "$(grep -c 'FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt)" -ge 2
-          grep 'setTextIsSelectable(true)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
-          ! grep -q 'window.insetsController' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
 
       - name: Build APK normally with Gradle
         run: gradle -p offlineai :app:assembleDebug --stacktrace
@@ -97,14 +110,55 @@ jobs:
           unzip -t "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
-          grep "package: name='com.internetsizyapayzeka.app2026' versionCode='100' versionName='1.0'" /tmp/badging.txt
+          grep "package: name='com.internetsizyapayzeka.app2026' versionCode='101' versionName='1.1'" /tmp/badging.txt
           grep "application-label:'İnternetsiz Yapay Zeka'" /tmp/badging.txt
-          cp "$APK" Internetsiz-Yapay-Zeka-1.0.apk
-          sha256sum Internetsiz-Yapay-Zeka-1.0.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Launch exact built APK in dark and light themes
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eux
+            APK=offlineai/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r "$APK"
+
+            adb logcat -c
+            adb shell am force-stop com.internetsizyapayzeka.app2026
+            adb shell am start -W -n com.internetsizyapayzeka.app2026/com.offlineai.app.MainActivity
+            sleep 5
+            DARK_PID="$(adb shell pidof com.internetsizyapayzeka.app2026 | tr -d '\r')"
+            test -n "$DARK_PID"
+            ! adb logcat -d -v brief | grep -E 'FATAL EXCEPTION.*com.internetsizyapayzeka|Process: com.internetsizyapayzeka.app2026.*FATAL'
+
+            adb shell am force-stop com.internetsizyapayzeka.app2026
+            adb shell 'run-as com.internetsizyapayzeka.app2026 mkdir -p shared_prefs'
+            printf '%s\n' '<?xml version="1.0" encoding="utf-8" standalone="yes" ?><map><boolean name="dark_theme" value="false" /></map>' | adb shell 'run-as com.internetsizyapayzeka.app2026 sh -c "cat > shared_prefs/offline_ai_prefs.xml"'
+            adb logcat -c
+            adb shell am start -W -n com.internetsizyapayzeka.app2026/com.offlineai.app.MainActivity
+            sleep 5
+            LIGHT_PID="$(adb shell pidof com.internetsizyapayzeka.app2026 | tr -d '\r')"
+            test -n "$LIGHT_PID"
+            ! adb logcat -d -v brief | grep -E 'FATAL EXCEPTION.*com.internetsizyapayzeka|Process: com.internetsizyapayzeka.app2026.*FATAL'
+
+      - name: Prepare APK
+        run: |
+          set -euxo pipefail
+          cp offlineai/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.1.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Internetsiz-Yapay-Zeka-1.0
-          path: Internetsiz-Yapay-Zeka-1.0.apk
+          name: Internetsiz-Yapay-Zeka-1.1
+          path: Internetsiz-Yapay-Zeka-1.1.apk
           if-no-files-found: error
