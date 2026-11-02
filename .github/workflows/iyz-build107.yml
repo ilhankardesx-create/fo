@@ -83,7 +83,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            $ANDROID_HOME/build-tools/37.0.0/apksigner sign --ks $HOME/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out /tmp/build107-release-runtime.apk /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/release/app-release-unsigned.apk
+            keytool -genkeypair -keystore /tmp/runtime-test.jks -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Runtime Test,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000 -noprompt
+            $ANDROID_HOME/build-tools/37.0.0/apksigner sign --ks /tmp/runtime-test.jks --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out /tmp/build107-release-runtime.apk /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/release/app-release-unsigned.apk
             $ANDROID_HOME/build-tools/37.0.0/apksigner verify --verbose /tmp/build107-release-runtime.apk
             adb install -r /tmp/build107-release-runtime.apk
             adb logcat -c
