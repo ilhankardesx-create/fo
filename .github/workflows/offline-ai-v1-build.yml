@@ -51,6 +51,15 @@ jobs:
           mkdir -p offlineai
           unzip -q /tmp/offline-ai-source.zip -d offlineai
           sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
+          sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
+          cat >> offlineai/app/build.gradle.kts <<'EOF'
+
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+              }
+          }
+          EOF
 
       - name: Verify release identity
         run: |
@@ -62,6 +71,7 @@ jobs:
           grep 'moonlauncher/moon-models/resolve/main/gemma/gemma3-1b-it-int4.litertlm' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep 'DownloadManager' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -f offlineai/app/src/main/res/drawable-nodpi/app_icon.webp
+          grep 'JvmTarget.JVM_17' offlineai/app/build.gradle.kts
 
       - name: Build APK normally with Gradle
         run: gradle -p offlineai :app:assembleDebug --stacktrace
