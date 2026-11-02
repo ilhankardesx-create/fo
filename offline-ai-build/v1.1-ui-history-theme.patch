@@ -1,0 +1,315 @@
+--- app/build.gradle.kts
++++ app/build.gradle.kts
+@@ -12,4 +12,4 @@
+         targetSdk = 36
+-        versionCode = 100
+-        versionName = "1.0"
++        versionCode = 101
++        versionName = "1.1"
+     }
+--- app/src/main/java/com/offlineai/app/MainActivity.kt
++++ app/src/main/java/com/offlineai/app/MainActivity.kt
+@@ -44,2 +44,7 @@
+ import java.io.FileOutputStream
++import java.text.SimpleDateFormat
++import java.util.Date
++import java.util.Locale
++import org.json.JSONArray
++import org.json.JSONObject
+ import java.util.zip.ZipInputStream
+@@ -66,2 +71,4 @@
+         private const val KEY_MODEL_VISION = "model_vision"
++        private const val KEY_DARK_THEME = "dark_theme"
++        private const val KEY_CHAT_HISTORY = "chat_history"
+     }
+@@ -79,2 +86,5 @@
+ 
++    private data class ChatLine(val role: String, val text: String)
++    private data class StoredChat(val id: Long, val title: String, val updatedAt: Long, val messages: List<ChatLine>)
++
+     private val models = listOf(
+@@ -135,10 +145,17 @@
+     private var pendingDocumentName: String? = null
+-
+-    private val bg = Color.rgb(11, 12, 15)
+-    private val primaryText = Color.rgb(248, 248, 250)
+-    private val assistantText = Color.rgb(239, 239, 242)
+-    private val muted = Color.rgb(174, 176, 184)
+-    private val panel = Color.rgb(27, 29, 35)
+-    private val panel2 = Color.rgb(38, 41, 48)
+-    private val border = Color.rgb(62, 66, 76)
++    private var isDarkTheme = true
++    private var currentChatId = System.currentTimeMillis()
++    private val currentChatLines = mutableListOf<ChatLine>()
++
++    private val bg: Int get() = if (isDarkTheme) Color.rgb(11, 12, 15) else Color.rgb(248, 249, 252)
++    private val primaryText: Int get() = if (isDarkTheme) Color.rgb(248, 248, 250) else Color.rgb(24, 26, 31)
++    private val assistantText: Int get() = if (isDarkTheme) Color.rgb(239, 239, 242) else Color.rgb(31, 33, 38)
++    private val muted: Int get() = if (isDarkTheme) Color.rgb(174, 176, 184) else Color.rgb(105, 108, 118)
++    private val panel: Int get() = if (isDarkTheme) Color.rgb(27, 29, 35) else Color.rgb(241, 243, 247)
++    private val panel2: Int get() = if (isDarkTheme) Color.rgb(38, 41, 48) else Color.rgb(228, 231, 237)
++    private val border: Int get() = if (isDarkTheme) Color.rgb(62, 66, 76) else Color.rgb(202, 206, 216)
++    private val dialogBg: Int get() = if (isDarkTheme) Color.rgb(30, 32, 38) else Color.rgb(252, 252, 254)
++    private val dialogCard: Int get() = if (isDarkTheme) Color.rgb(39, 42, 49) else Color.rgb(239, 241, 246)
++    private val dialogText: Int get() = if (isDarkTheme) Color.WHITE else Color.rgb(24, 26, 31)
++    private val dialogMuted: Int get() = if (isDarkTheme) Color.rgb(207, 208, 214) else Color.rgb(91, 95, 105)
+     private val blue = Color.rgb(48, 112, 239)
+@@ -158,3 +175,6 @@
+     override fun onCreate(savedInstanceState: Bundle?) {
++        val darkPreference = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_DARK_THEME, true)
++        setTheme(if (darkPreference) R.style.Theme_OfflineAI else R.style.Theme_OfflineAILight)
+         super.onCreate(savedInstanceState)
++        isDarkTheme = darkPreference
+         window.statusBarColor = bg
+@@ -199,6 +219,6 @@
+         }
+-        main.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)))
++        main.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+ 
+         val menu = roundButton("⚙").apply {
+-            textSize = 25f
++            textSize = 22f
+             background = rounded(panel2, 999f)
+@@ -206,13 +226,3 @@
+         }
+-        top.addView(menu, LinearLayout.LayoutParams(dp(58), dp(58)))
+-
+-        val topTitle = TextView(this).apply {
+-            text = "İnternetsiz Yapay Zeka"
+-            setTextColor(primaryText)
+-            textSize = 17f
+-            typeface = Typeface.DEFAULT_BOLD
+-            gravity = Gravity.CENTER_VERTICAL
+-            setPadding(dp(14), 0, 0, 0)
+-        }
+-        top.addView(topTitle, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
++        top.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)))
+ 
+@@ -341,5 +351,7 @@
+         PopupMenu(this, anchor).apply {
+-            menu.add("Modeller")
++            menu.add("Model İndir")
+             menu.add("Model içe aktar")
+             menu.add("Yeni sohbet")
++            menu.add("Sohbet geçmişi")
++            menu.add("Tema")
+             menu.add("Modeli kaldır")
+@@ -348,5 +360,7 @@
+                 when (item.title.toString()) {
+-                    "Modeller" -> showModelsDialog()
++                    "Model İndir" -> showModelsDialog()
+                     "Model içe aktar" -> openModelPicker()
+                     "Yeni sohbet" -> newChat()
++                    "Sohbet geçmişi" -> showChatHistory()
++                    "Tema" -> showThemeDialog()
+                     "Modeli kaldır" -> removeModel()
+@@ -377,3 +391,3 @@
+         modelDialogPolling?.cancel()
+-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.rgb(30, 32, 38)) }
++        val scroll = ScrollView(this).apply { setBackgroundColor(dialogBg) }
+         val body = LinearLayout(this).apply {
+@@ -386,4 +400,4 @@
+         val heading = TextView(this).apply {
+-            text = "Modeller"
+-            setTextColor(Color.WHITE)
++            text = "Model İndir"
++            setTextColor(dialogText)
+             textSize = 29f
+@@ -392,3 +406,3 @@
+         header.addView(heading, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+-        val close = roundButton("×").apply { textSize = 30f; background = rounded(Color.rgb(59, 61, 68), 999f) }
++        val close = roundButton("×").apply { textSize = 30f; background = rounded(panel2, 999f) }
+         header.addView(close, LinearLayout.LayoutParams(dp(54), dp(54)))
+@@ -398,3 +412,3 @@
+             text = "Cihazına uygun modeli seç. Model bir kez indikten sonra tamamen çevrimdışı çalışır."
+-            setTextColor(Color.rgb(207, 208, 214))
++            setTextColor(dialogMuted)
+             textSize = 16f
+@@ -413,3 +427,3 @@
+                 setPadding(dp(17), dp(16), dp(17), dp(16))
+-                background = rounded(Color.rgb(39, 42, 49), 22f)
++                background = rounded(dialogCard, 22f)
+             }
+@@ -441,3 +455,3 @@
+                 text = spec.name
+-                setTextColor(Color.WHITE)
++                setTextColor(dialogText)
+                 textSize = 22f
+@@ -449,3 +463,3 @@
+                 text = spec.description
+-                setTextColor(Color.rgb(212, 213, 218))
++                setTextColor(dialogMuted)
+                 textSize = 15f
+@@ -496,3 +510,3 @@
+         dialog.setOnShowListener {
+-            dialog.window?.setBackgroundDrawable(rounded(Color.rgb(30, 32, 38), 20f))
++            dialog.window?.setBackgroundDrawable(rounded(dialogBg, 20f))
+             dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.94f).toInt(), (resources.displayMetrics.heightPixels * 0.90f).toInt())
+@@ -858,3 +872,3 @@
+         if (!engine.isLoaded) {
+-            Toast.makeText(this, "Önce Modeller ekranından bir model kur.", Toast.LENGTH_SHORT).show()
++            Toast.makeText(this, "Önce Model İndir ekranından bir model kur.", Toast.LENGTH_SHORT).show()
+             showModelsDialog()
+@@ -880,3 +894,5 @@
+         switchToConversation()
+-        addUserBubble(userLabel.trim())
++        val visibleUserMessage = userLabel.trim()
++        addUserBubble(visibleUserMessage)
++        recordChatLine("user", visibleUserMessage)
+         val assistant = addAssistantMessage()
+@@ -919,2 +935,3 @@
+             }
++            recordChatLine("assistant", assistant.answer.text.toString())
+             setComposerEnabled(true); scrollToBottom()
+@@ -987,4 +1004,7 @@
+         launch {
++            persistCurrentChat()
+             activeTyping?.cancel(); activeTyping = null
+             runCatching { engine.resetConversation() }
++            currentChatLines.clear()
++            currentChatId = System.currentTimeMillis()
+             conversationPanel.removeAllViews(); conversationScroll.visibility = View.GONE; centerPanel.visibility = View.VISIBLE
+@@ -1006,2 +1026,120 @@
+ 
++    private fun showThemeDialog() {
++        val options = arrayOf("Koyu tema", "Açık tema")
++        val selected = if (isDarkTheme) 0 else 1
++        AlertDialog.Builder(this)
++            .setTitle("Tema")
++            .setSingleChoiceItems(options, selected) { dialog, which ->
++                val dark = which == 0
++                if (dark != isDarkTheme) {
++                    persistCurrentChat()
++                    prefs().edit().putBoolean(KEY_DARK_THEME, dark).apply()
++                    dialog.dismiss()
++                    recreate()
++                } else {
++                    dialog.dismiss()
++                }
++            }
++            .setNegativeButton("Vazgeç", null)
++            .show()
++    }
++
++    private fun recordChatLine(role: String, text: String) {
++        if (text.isBlank()) return
++        currentChatLines += ChatLine(role, text)
++        persistCurrentChat()
++    }
++
++    private fun persistCurrentChat() {
++        if (currentChatLines.isEmpty()) return
++        val existing = loadChatHistory().filterNot { it.id == currentChatId }
++        val titleSource = currentChatLines.firstOrNull { it.role == "user" }?.text ?: "Sohbet"
++        val title = titleSource.replace("\n", " ").trim().let { if (it.length > 42) it.take(42) + "…" else it }
++        val current = StoredChat(currentChatId, title.ifBlank { "Sohbet" }, System.currentTimeMillis(), currentChatLines.toList())
++        val merged = (listOf(current) + existing).take(30)
++        val array = JSONArray()
++        merged.forEach { chat ->
++            val messages = JSONArray()
++            chat.messages.forEach { line -> messages.put(JSONObject().put("role", line.role).put("text", line.text)) }
++            array.put(JSONObject().put("id", chat.id).put("title", chat.title).put("updatedAt", chat.updatedAt).put("messages", messages))
++        }
++        prefs().edit().putString(KEY_CHAT_HISTORY, array.toString()).apply()
++    }
++
++    private fun loadChatHistory(): List<StoredChat> {
++        val raw = prefs().getString(KEY_CHAT_HISTORY, null) ?: return emptyList()
++        return runCatching {
++            val array = JSONArray(raw)
++            buildList {
++                for (i in 0 until array.length()) {
++                    val obj = array.optJSONObject(i) ?: continue
++                    val messageArray = obj.optJSONArray("messages") ?: JSONArray()
++                    val messages = buildList {
++                        for (j in 0 until messageArray.length()) {
++                            val line = messageArray.optJSONObject(j) ?: continue
++                            val role = line.optString("role")
++                            val text = line.optString("text")
++                            if (text.isNotBlank()) add(ChatLine(role, text))
++                        }
++                    }
++                    add(StoredChat(obj.optLong("id"), obj.optString("title", "Sohbet"), obj.optLong("updatedAt"), messages))
++                }
++            }.sortedByDescending { it.updatedAt }
++        }.getOrDefault(emptyList())
++    }
++
++    private fun showChatHistory() {
++        persistCurrentChat()
++        val chats = loadChatHistory()
++        if (chats.isEmpty()) {
++            Toast.makeText(this, "Henüz kayıtlı sohbet yok.", Toast.LENGTH_SHORT).show()
++            return
++        }
++        val scroll = ScrollView(this).apply { setBackgroundColor(dialogBg) }
++        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(20)) }
++        scroll.addView(body, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
++        body.addView(TextView(this).apply { text = "Sohbet geçmişi"; setTextColor(dialogText); textSize = 24f; typeface = Typeface.DEFAULT_BOLD })
++        val formatter = SimpleDateFormat("dd.MM.yyyy  HH:mm", Locale("tr", "TR"))
++        chats.forEach { chat ->
++            val item = LinearLayout(this).apply {
++                orientation = LinearLayout.VERTICAL
++                setPadding(dp(15), dp(13), dp(15), dp(13))
++                background = rounded(dialogCard, 18f)
++                setOnClickListener { showStoredChat(chat) }
++            }
++            item.addView(TextView(this).apply { text = chat.title; setTextColor(dialogText); textSize = 16f; typeface = Typeface.DEFAULT_BOLD })
++            item.addView(TextView(this).apply { text = formatter.format(Date(chat.updatedAt)); setTextColor(dialogMuted); textSize = 12f; setPadding(0, dp(5), 0, 0) })
++            body.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
++        }
++        val dialog = AlertDialog.Builder(this).setView(scroll).setNegativeButton("Kapat", null).create()
++        dialog.setOnShowListener { dialog.window?.setBackgroundDrawable(rounded(dialogBg, 18f)); dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.94f).toInt(), (resources.displayMetrics.heightPixels * 0.84f).toInt()) }
++        dialog.show()
++    }
++
++    private fun showStoredChat(chat: StoredChat) {
++        val scroll = ScrollView(this).apply { setBackgroundColor(dialogBg) }
++        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(16), dp(18), dp(22)) }
++        scroll.addView(body, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
++        body.addView(TextView(this).apply { text = chat.title; setTextColor(dialogText); textSize = 22f; typeface = Typeface.DEFAULT_BOLD })
++        chat.messages.forEach { line ->
++            val message = TextView(this).apply {
++                text = line.text
++                textSize = if (line.role == "assistant") 17f else 15f
++                setTextColor(if (line.role == "assistant") assistantText else primaryText)
++                typeface = if (line.role == "assistant") Typeface.create("serif", Typeface.NORMAL) else Typeface.DEFAULT_BOLD
++                setLineSpacing(dp(3).toFloat(), 1.12f)
++                setPadding(dp(14), dp(10), dp(14), dp(10))
++                background = if (line.role == "assistant") null else rounded(panel2, 18f)
++                setTextIsSelectable(true)
++            }
++            body.addView(message, LinearLayout.LayoutParams(if (line.role == "assistant") ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
++                gravity = if (line.role == "assistant") Gravity.START else Gravity.END
++                topMargin = dp(12)
++            })
++        }
++        val dialog = AlertDialog.Builder(this).setView(scroll).setNegativeButton("Kapat", null).create()
++        dialog.setOnShowListener { dialog.window?.setBackgroundDrawable(rounded(dialogBg, 18f)); dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.96f).toInt(), (resources.displayMetrics.heightPixels * 0.88f).toInt()) }
++        dialog.show()
++    }
++
+     private fun showAbout() {
+@@ -1009,3 +1147,3 @@
+             .setTitle("İnternetsiz Yapay Zeka")
+-            .setMessage("Model indirmeleri Android DownloadManager ile arka planda devam eder. İndirme bittiğinde uygulama açıksa otomatik kurulur; kapalıysa Modeller ekranındaki Kur düğmesinden kurulabilir. Yapay zeka işlemleri cihazda çalışır.")
++            .setMessage("İnternetsiz Yapay Zeka, seçtiğiniz yapay zeka modelini doğrudan cihazınızda çalıştırır. Model kurulduktan sonra sohbet için internet bağlantısı gerekmez.\n\nKullanım kılavuzu\n• Model İndir menüsünden cihazınıza uygun modeli seçin.\n• Cihazınızın RAM ve işlem gücüne göre model kullanın. Çok büyük modeller bazı cihazlarda çalışmayabilir veya yavaş olabilir.\n• İndirme arka planda devam eder. İndirme tamamlandıktan sonra modeli kurup kullanabilirsiniz.")
+             .setPositiveButton("Tamam", null).show()
+@@ -1048,2 +1186,3 @@
+     override fun onDestroy() {
++        persistCurrentChat()
+         modelDialogPolling?.cancel(); activeTyping?.cancel(); runCatching { unregisterReceiver(downloadReceiver) }
+--- app/src/main/res/values/themes.xml
++++ app/src/main/res/values/themes.xml
+@@ -9,2 +9,11 @@
+     </style>
++    <style name="Theme.OfflineAILight" parent="android:style/Theme.Material.Light.NoActionBar">
++        <item name="android:fontFamily">sans</item>
++        <item name="android:windowLightStatusBar">true</item>
++        <item name="android:windowLightNavigationBar">true</item>
++        <item name="android:statusBarColor">#F8F9FC</item>
++        <item name="android:navigationBarColor">#F8F9FC</item>
++        <item name="android:windowActionModeOverlay">true</item>
++        <item name="android:colorAccent">#3070EF</item>
++    </style>
+ </resources>
