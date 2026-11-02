@@ -1,0 +1,73 @@
+name: Build Internetsiz Yapay Zeka 105
+
+on:
+  push:
+    branches: [iyz-build105]
+    paths:
+      - '.github/workflows/iyz-build105.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Reconstruct and validate source
+        shell: bash
+        run: |
+          cat iyz-build105/source.part* > /tmp/source.b64
+          base64 -d /tmp/source.b64 > /tmp/source.zip
+          unzip -t /tmp/source.zip
+          mkdir -p /tmp/iyz
+          unzip -q /tmp/source.zip -d /tmp/iyz
+          cd /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
+          python3 validate_build105.py
+
+      - name: Build debug APK from source
+        shell: bash
+        run: |
+          cd /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
+          gradle --no-daemon clean assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          APK=/tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose "$APK"
+          unzip -t "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/Internetsiz-Yapay-Zeka-1.2-build105.apk"
+          sha256sum "$GITHUB_WORKSPACE/Internetsiz-Yapay-Zeka-1.2-build105.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-build105
+          path: Internetsiz-Yapay-Zeka-1.2-build105.apk
+          if-no-files-found: error
+          retention-days: 7
