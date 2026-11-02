@@ -28,7 +28,7 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Restore source and apply compile compatibility fixes
+      - name: Restore source and apply compile/runtime compatibility fixes
         run: |
           set -euxo pipefail
           cat offline-ai-build/source_part_1.b64 offline-ai-build/source_part_2.b64 offline-ai-build/source_part_3a.b64 offline-ai-build/source_part_3b.b64 offline-ai-build/source_part_3c.b64 offline-ai-build/source_part_3d.b64 > /tmp/source.b64
@@ -41,6 +41,17 @@ jobs:
           sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
           sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s = p.read_text()
+          old = '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+              window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+          }
+          '''
+          assert old in s, 'startup WindowInsetsController block not found'
+          p.write_text(s.replace(old, '', 1))
+          PY
           cat >> offlineai/app/build.gradle.kts <<'EOF'
 
           kotlin {
@@ -49,6 +60,7 @@ jobs:
               }
           }
           EOF
+          ! grep -q 'window.insetsController' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           gradle -p offlineai :app:assembleDebug
 
       - name: Enable KVM
