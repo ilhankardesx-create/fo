@@ -1,4 +1,4 @@
-name: Offline AI clean APK
+name: Offline AI clean APK + AAB
 
 on:
   push:
@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p offline-ai/app/src/main/java/com/offlineai/app
+          mkdir -p offline-ai/app/src/main/res/drawable-nodpi
           rm -rf offline-ai/app/src/main/res/mipmap-xxxhdpi
           curl -fsSL \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -34,6 +35,7 @@ jobs:
           python3 offline-ai/patch_093.py
           python3 offline-ai/patch_094.py
           python3 offline-ai/patch_095.py
+          base64 -d offline-ai/icon_095.b64 > offline-ai/app/src/main/res/drawable-nodpi/ic_app_logo_095.webp
           test -s offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           test -s offline-ai/app/src/main/java/com/offlineai/app/SamsungPerformanceBoost.kt
           grep -q 'showModelsDialog' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
@@ -50,7 +52,8 @@ jobs:
           grep -q 'R.drawable.ic_copy' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'copyAnswerToClipboard' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
           grep -q 'com.tom_roush.pdfbox.android.PDFBoxResourceLoader' offline-ai/app/src/main/java/com/offlineai/app/MainActivity.kt
-          test -s offline-ai/app/src/main/res/drawable/ic_app_logo.xml
+          grep -q '@drawable/ic_app_logo_095' offline-ai/app/src/main/AndroidManifest.xml
+          test -s offline-ai/app/src/main/res/drawable-nodpi/ic_app_logo_095.webp
           test -s offline-ai/app/src/main/res/drawable/ic_copy.xml
 
       - uses: actions/setup-java@v5
@@ -67,9 +70,9 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Build unsigned release APK
+      - name: Build unsigned release APK and AAB
         working-directory: offline-ai
-        run: gradle :app:assembleRelease --stacktrace
+        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace
 
       - name: Export Android Build Tools signer
         run: |
@@ -82,6 +85,12 @@ jobs:
         with:
           name: offline-ai-0.9.5-unsigned
           path: offline-ai/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-ai-0.9.5-aab-unsigned
+          path: offline-ai/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
