@@ -1,0 +1,80 @@
+name: Runtime test Offline AI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "offline-ai-v1-build" ]
+
+jobs:
+  runtime-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Restore source and apply compile compatibility fixes
+        run: |
+          set -euxo pipefail
+          cat offline-ai-build/source_part_1.b64 offline-ai-build/source_part_2.b64 offline-ai-build/source_part_3a.b64 offline-ai-build/source_part_3b.b64 offline-ai-build/source_part_3c.b64 offline-ai-build/source_part_3d.b64 > /tmp/source.b64
+          test "$(wc -c < /tmp/source.b64)" -eq 31304
+          base64 --decode /tmp/source.b64 > /tmp/source.zip
+          echo "7124caf66eb15d3306f5f8bad8802565500a2c9a8b67a2cb2397e0f3521e5dd2  /tmp/source.zip" | sha256sum -c -
+          mkdir -p offlineai
+          unzip -q /tmp/source.zip -d offlineai
+          sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
+          sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
+          sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          cat >> offlineai/app/build.gradle.kts <<'EOF'
+
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+              }
+          }
+          EOF
+          gradle -p offlineai :app:assembleDebug
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Launch APK on Android 16 emulator and capture crash
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -eux
+            APK=offlineai/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r "$APK"
+            adb logcat -c
+            adb shell am force-stop com.internetsizyapayzeka.app2026
+            adb shell am start -W -n com.internetsizyapayzeka.app2026/com.offlineai.app.MainActivity || true
+            sleep 5
+            echo '=== PROCESS ==='
+            adb shell pidof com.internetsizyapayzeka.app2026 || true
+            echo '=== CRASH LOG ==='
+            adb logcat -d -v threadtime | grep -E 'FATAL EXCEPTION|AndroidRuntime|Process: com.internetsizyapayzeka.app2026|com.offlineai.app|UnsatisfiedLinkError|SecurityException|Resources.NotFoundException' | tail -250 || true
+            test -n "$(adb shell pidof com.internetsizyapayzeka.app2026 | tr -d '\r')"
