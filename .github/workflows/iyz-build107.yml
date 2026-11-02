@@ -1,0 +1,124 @@
+name: Build and Runtime Test IYZ 107
+
+on:
+  push:
+    branches: [iyz-build107]
+    paths:
+      - '.github/workflows/iyz-build107.yml'
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Reconstruct build107 source
+        shell: bash
+        run: |
+          cat iyz-build105/source.part* > /tmp/source.b64
+          base64 -d /tmp/source.b64 > /tmp/source.zip
+          unzip -q /tmp/source.zip -d /tmp/iyz
+          SRC=/tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
+          cp iyz-build105/app-build.gradle.kts "$SRC/app/build.gradle.kts"
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/iyz/Internetsiz-Yapay-Zeka-build105-source')
+          main=root/'app/src/main/java/com/offlineai/app/MainActivity.kt'
+          s=main.read_text()
+          s=s.replace('ScrollView.LayoutParams(', 'FrameLayout.LayoutParams(')
+          s=s.replace('isTextSelectable = true', 'setTextIsSelectable(true)')
+          old='''        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            window.insetsController?.setSystemBarsAppearance(if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
+          new='''        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            window.insetsController?.setSystemBarsAppearance(if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
+          if old not in s:
+              raise SystemExit('Expected onCreate block not found')
+          main.write_text(s.replace(old,new,1))
+          gradle=root/'app/build.gradle.kts'
+          g=gradle.read_text()
+          if 'versionCode = 105' not in g:
+              raise SystemExit('Expected versionCode 105 not found')
+          gradle.write_text(g.replace('versionCode = 105','versionCode = 107',1))
+          PY
+          grep -n 'versionCode' "$SRC/app/build.gradle.kts"
+          nl -ba "$SRC/app/src/main/java/com/offlineai/app/MainActivity.kt" | sed -n '170,186p'
+
+      - name: Build debug and unsigned release APKs
+        shell: bash
+        run: |
+          cd /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
+          gradle --no-daemon clean assembleDebug assembleRelease
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Enable KVM permissions
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Install and launch on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell am force-stop com.internetsizyapayzeka.app2026
+            adb shell monkey -p com.internetsizyapayzeka.app2026 -c android.intent.category.LAUNCHER 1
+            sleep 12
+            adb shell pidof com.internetsizyapayzeka.app2026 | tee /tmp/pid.txt || true
+            adb logcat -d -v threadtime > /tmp/runtime-logcat.txt
+            echo '===== APP CRASH CHECK ====='
+            grep -nE 'FATAL EXCEPTION|Process: com.internetsizyapayzeka.app2026|Unable to start activity|AndroidRuntime' /tmp/runtime-logcat.txt | tail -100 || true
+            test -s /tmp/pid.txt
+            ! grep -A3 'FATAL EXCEPTION' /tmp/runtime-logcat.txt | grep -q 'com.internetsizyapayzeka.app2026'
+
+      - name: Prepare artifacts
+        if: success()
+        shell: bash
+        run: |
+          cp /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build107-runtime-tested-debug.apk
+          cp /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/release/app-release-unsigned.apk Internetsiz-Yapay-Zeka-1.2-build107-unsigned.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build107-*.apk
+
+      - name: Upload runtime log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: IYZ-build107-runtime-log
+          path: /tmp/runtime-logcat.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: IYZ-build107-apks
+          path: |
+            Internetsiz-Yapay-Zeka-1.2-build107-runtime-tested-debug.apk
+            Internetsiz-Yapay-Zeka-1.2-build107-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
