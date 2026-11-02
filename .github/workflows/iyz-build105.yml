@@ -46,6 +46,7 @@ jobs:
           unzip -t /tmp/source.zip
           mkdir -p /tmp/iyz
           unzip -q /tmp/source.zip -d /tmp/iyz
+          cp iyz-build105/app-build.gradle.kts /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build.gradle.kts
           cd /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
           python3 validate_build105.py
 
