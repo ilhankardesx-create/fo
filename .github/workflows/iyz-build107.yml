@@ -74,7 +74,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Install and launch on Android emulator
+      - name: Sign release for runtime test and launch on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -83,7 +83,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            adb install -r /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/debug/app-debug.apk
+            $ANDROID_HOME/build-tools/37.0.0/apksigner sign --ks $HOME/.android/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out /tmp/build107-release-runtime.apk /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/release/app-release-unsigned.apk
+            $ANDROID_HOME/build-tools/37.0.0/apksigner verify --verbose /tmp/build107-release-runtime.apk
+            adb install -r /tmp/build107-release-runtime.apk
             adb logcat -c
             adb shell am force-stop com.internetsizyapayzeka.app2026
             adb shell monkey -p com.internetsizyapayzeka.app2026 -c android.intent.category.LAUNCHER 1
@@ -99,15 +101,15 @@ jobs:
         if: success()
         shell: bash
         run: |
-          cp /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build107-runtime-tested-debug.apk
           cp /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build/outputs/apk/release/app-release-unsigned.apk Internetsiz-Yapay-Zeka-1.2-build107-unsigned.apk
+          cp /tmp/build107-release-runtime.apk Internetsiz-Yapay-Zeka-1.2-build107-release-runtime-tested.apk
           sha256sum Internetsiz-Yapay-Zeka-1.2-build107-*.apk
 
       - name: Upload runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: IYZ-build107-runtime-log
+          name: IYZ-build107-release-runtime-log
           path: /tmp/runtime-logcat.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -116,9 +118,9 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: IYZ-build107-apks
+          name: IYZ-build107-release-apks
           path: |
-            Internetsiz-Yapay-Zeka-1.2-build107-runtime-tested-debug.apk
+            Internetsiz-Yapay-Zeka-1.2-build107-release-runtime-tested.apk
             Internetsiz-Yapay-Zeka-1.2-build107-unsigned.apk
           if-no-files-found: error
           retention-days: 7
