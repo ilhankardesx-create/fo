@@ -1,0 +1,62 @@
+name: Build Offline AI 1.0
+
+on:
+  push:
+    branches: [ "offline-ai-v1-build" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Restore Offline AI source
+        run: |
+          cat offline-ai-build/source_part_*.b64 > /tmp/offline-ai-source.b64
+          base64 --decode /tmp/offline-ai-source.b64 > /tmp/offline-ai-source.zip
+          mkdir -p offlineai
+          unzip -q /tmp/offline-ai-source.zip -d offlineai
+          sed -i 's/@drawable\/app_icon_round/@drawable\/app_icon/g' offlineai/app/src/main/AndroidManifest.xml
+
+      - name: Verify release identity
+        run: |
+          grep 'applicationId = "com.internetsizyapayzeka.app2026"' offlineai/app/build.gradle.kts
+          grep 'versionCode = 100' offlineai/app/build.gradle.kts
+          grep 'versionName = "1.0"' offlineai/app/build.gradle.kts
+          grep 'android:label="İnternetsiz Yapay Zeka"' offlineai/app/src/main/AndroidManifest.xml
+          grep 'moonlauncher/moon-models/resolve/main/gemma/gemma3-1b-it-int4.litertlm' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep 'DownloadManager' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+
+      - name: Build APK normally with Gradle
+        run: gradle -p offlineai :app:assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: cp offlineai/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.0.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-1.0
+          path: Internetsiz-Yapay-Zeka-1.0.apk
+          if-no-files-found: error
