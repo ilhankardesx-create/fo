@@ -47,6 +47,9 @@ jobs:
           mkdir -p /tmp/iyz
           unzip -q /tmp/source.zip -d /tmp/iyz
           cp iyz-build105/app-build.gradle.kts /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/build.gradle.kts
+          MAIN=/tmp/iyz/Internetsiz-Yapay-Zeka-build105-source/app/src/main/java/com/offlineai/app/MainActivity.kt
+          sed -i 's/ScrollView.LayoutParams(/FrameLayout.LayoutParams(/g' "$MAIN"
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/' "$MAIN"
           cd /tmp/iyz/Internetsiz-Yapay-Zeka-build105-source
           python3 validate_build105.py
 
