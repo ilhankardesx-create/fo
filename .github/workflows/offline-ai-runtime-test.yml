@@ -66,9 +66,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -eux
-            APK=offlineai/app/build/outputs/apk/debug/app-debug.apk
-            adb install -r "$APK"
+            adb install -r offlineai/app/build/outputs/apk/debug/app-debug.apk
             adb logcat -c
             adb shell am force-stop com.internetsizyapayzeka.app2026
             adb shell am start -W -n com.internetsizyapayzeka.app2026/com.offlineai.app.MainActivity || true
