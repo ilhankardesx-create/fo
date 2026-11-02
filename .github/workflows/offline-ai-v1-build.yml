@@ -54,6 +54,14 @@ jobs:
           sed -i '/kotlinOptions { jvmTarget = "17" }/d' offlineai/app/build.gradle.kts
           sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
           sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s = p.read_text()
+          old = "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n"
+          assert old in s, 'startup WindowInsetsController block not found'
+          p.write_text(s.replace(old, '', 1))
+          PY
           cat >> offlineai/app/build.gradle.kts <<'EOF'
 
           kotlin {
@@ -76,6 +84,7 @@ jobs:
           grep 'JvmTarget.JVM_17' offlineai/app/build.gradle.kts
           test "$(grep -c 'FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt)" -ge 2
           grep 'setTextIsSelectable(true)' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
+          ! grep -q 'window.insetsController' offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt
 
       - name: Build APK normally with Gradle
         run: gradle -p offlineai :app:assembleDebug --stacktrace
