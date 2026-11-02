@@ -45,10 +45,7 @@ jobs:
           from pathlib import Path
           p = Path('offlineai/app/src/main/java/com/offlineai/app/MainActivity.kt')
           s = p.read_text()
-          old = '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-              window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
-          }
-          '''
+          old = "        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n"
           assert old in s, 'startup WindowInsetsController block not found'
           p.write_text(s.replace(old, '', 1))
           PY
