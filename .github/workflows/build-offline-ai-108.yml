@@ -183,7 +183,7 @@ jobs:
           adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __scroll_stream_test true
           sleep 1
           adb exec-out screencap -p > emulator-stream-start.png
-          sleep 9
+          sleep 22
           STREAM_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
           test -n "$STREAM_PID"
           adb logcat -d -s BUILD110_SCROLL:D '*:S' > scroll-log.txt || true
