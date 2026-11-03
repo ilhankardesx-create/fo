@@ -160,13 +160,18 @@
                  setLineSpacing(dp(3).toFloat(), 1.12f)
                  setPadding(dp(14), dp(10), dp(14), dp(10))
                  background = if (assistant) null else rounded(panel2, 18f)
-@@ -1431,8 +1460,8 @@
+@@ -1430,9 +1459,12 @@
+             while (isActive) {
                  if (pending.isNotEmpty()) {
                      val burst = when { pending.length > 180 -> 10; pending.length > 90 -> 6; pending.length > 45 -> 3; pending.length > 18 -> 2; else -> 1 }
-                     repeat(minOf(burst, pending.length)) { rendered.append(pending[0]); pending.deleteCharAt(0) }
+-                    repeat(minOf(burst, pending.length)) { rendered.append(pending[0]); pending.deleteCharAt(0) }
 -                    target.text = rendered.toString(); onUpdate(); delay(11L)
 -                } else if (completed) break else delay(14L)
-+                    target.text = rendered.toString(); onUpdate(); delay(4L)
++                    val take = minOf(burst, pending.length)
++                    val chunk = pending.substring(0, take)
++                    pending.delete(0, take)
++                    rendered.append(chunk)
++                    target.append(chunk); onUpdate(); delay(4L)
 +                } else if (completed) break else delay(5L)
              }
          }
