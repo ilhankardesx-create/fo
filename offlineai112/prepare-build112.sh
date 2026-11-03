@@ -13,7 +13,7 @@ GRADLE="project112/app/build.gradle.kts"
 
 grep -q 'versionCode = 112' "$GRADLE"
 grep -q 'showThemedPopup(anchor, listOf("Fotoğraflar", "Dosyalar"), openAbove = true)' "$FILE"
-grep -q 'val popupHeight = dp(items.size \* 50 + 12)' "$FILE"
+grep -q 'popup.showAtLocation(window.decorView, Gravity.TOP or Gravity.START, popupX, popupY)' "$FILE"
 grep -q 'fotoğraf analizini desteklemiyor. Fotoğraf destekleyen bir model seç.' "$FILE"
 
 # Build clean BUILD112 from source.
