@@ -1,17 +1,17 @@
-name: Build and Emulator-Test Offline AI 109 APK
+name: Build and Emulator-Test Offline AI 110 APK
 
 on:
   push:
-    branches: [ "offline-ai-build109" ]
+    branches: [ "offline-ai-build110" ]
     paths:
-      - "offlineai109/**"
+      - "offlineai110/**"
       - ".github/workflows/build-offline-ai-108.yml"
   workflow_dispatch:
 
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -42,19 +42,19 @@ jobs:
               offlineai108/chunk_04.b64 \
               | base64 -d > offlineai108-source.zip
           echo "cd9564a71b2b6e8e119d2851788ecd27d7a173cd246b7749169bd1c9a0ac0e88  offlineai108-source.zip" | sha256sum -c -
-          rm -rf project109
-          mkdir project109
-          unzip -q offlineai108-source.zip -d project109
-          chmod +x project109/gradlew
+          rm -rf project110
+          mkdir project110
+          unzip -q offlineai108-source.zip -d project110
+          chmod +x project110/gradlew
 
       - name: Apply established BUILD108 source fixes
         run: |
-          FILE="project109/app/src/main/java/com/offlineai/app/MainActivity.kt"
+          FILE="project110/app/src/main/java/com/offlineai/app/MainActivity.kt"
           sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' "$FILE"
           sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' "$FILE"
           python - <<'PY'
           from pathlib import Path
-          p = Path('project109/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          p = Path('project110/app/src/main/java/com/offlineai/app/MainActivity.kt')
           s = p.read_text()
           old = '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
           new = '''        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
@@ -65,40 +65,51 @@ jobs:
 
       - name: Apply BUILD109 full-screen conversation UI
         run: |
-          patch -d project109 -p1 < offlineai109/build109-ui.patch
-          echo "bdfcbcdd3310e39d019be2d9a5ac007d9b143c0c56fcec5d500afb7f5cc406c3  project109/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
-          echo "9cba84c3d35e55d3eb66c706bcf03a8b48e59571bca751a7a0231a1c9077d12b  project109/app/build.gradle.kts" | sha256sum -c -
-          grep -q 'versionCode = 109' project109/app/build.gradle.kts
-          grep -q 'clipToPadding = false' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
-          grep -q 'Floating composer' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
-          grep -q 'engine.requestStop()' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
+          patch -d project110 -p1 < offlineai109/build109-ui.patch
+          echo "bdfcbcdd3310e39d019be2d9a5ac007d9b143c0c56fcec5d500afb7f5cc406c3  project110/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "9cba84c3d35e55d3eb66c706bcf03a8b48e59571bca751a7a0231a1c9077d12b  project110/app/build.gradle.kts" | sha256sum -c -
 
-      - name: Build clean BUILD109 APK
-        working-directory: project109
+      - name: Apply BUILD110 fixes
+        run: |
+          patch -d project110 -p1 < offlineai110/build110-fixes.patch
+          echo "48b8e03a66b609ed3119e7a9d73fd665d2ed4245dea5612fe8cbdfcb73a40dfc  project110/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "8a24afa5d29f6cc097ca415c16206b02f14eb07f2e9af4dbccf2a8168d001e74  project110/app/build.gradle.kts" | sha256sum -c -
+          grep -q 'versionCode = 110' project110/app/build.gradle.kts
+          grep -q 'İlhan Kardeş' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'ilhankardesx@gmail.com' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'KULLANIM KILAVUZU' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'scrollToBottom(force = false)' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'renderCurrentChatLines()' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          ! grep -q 'recreate()' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          ! grep -q 'fullScroll(' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'engine.requestStop()' project110/app/src/main/java/com/offlineai/app/MainActivity.kt
+
+      - name: Build clean BUILD110 APK
+        working-directory: project110
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
       - name: Verify clean APK metadata
         run: |
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project109/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
-          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='109' versionName='1.2'" apk-badging.txt
-          cp project109/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk
-          sha256sum Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk | tee apk-sha256.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project110/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
+          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='110' versionName='1.2'" apk-badging.txt
+          cp project110/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk | tee apk-sha256.txt
 
-      - name: Build emulator-only conversation preview APK
+      - name: Build emulator-only validation APK
         run: |
-          rm -rf project109-preview
-          cp -a project109 project109-preview
+          rm -rf project110-preview
+          cp -a project110 project110-preview
           python - <<'PY'
           from pathlib import Path
-          p = Path('project109-preview/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          p = Path('project110-preview/app/src/main/java/com/offlineai/app/MainActivity.kt')
           s = p.read_text()
           needle = '''        restoreModel()\n    }\n\n    private fun registerDownloadReceiver()'''
-          preview = '''        restoreModel()\n        if (intent.getBooleanExtra("__chat_ui_preview", false)) {\n            switchToConversation()\n            addUserBubble("arayüzde ufak değişiklik yapacağız sadece dayı")\n            repeat(6) { index ->\n                val assistant = addAssistantMessage()\n                assistant.thinking.stopAndHide()\n                assistant.answer.visibility = View.VISIBLE\n                assistant.answer.text = "BUILD 109 sohbet akış testi ${index + 1}. Mesajlar artık üst ve alt panellerin ayırdığı küçük bir kutuda değil; ekran boyunca akıyor. Alt yazma çubuğu sabit kalıyor ve sohbet onun arkasından kaydırılabiliyor."\n                addUserBubble("Test mesajı ${index + 2}: sohbet ekran boyunca devam etsin")\n            }\n            scrollToBottom()\n        }\n    }\n\n    private fun registerDownloadReceiver()'''
+          hook = '''        restoreModel()\n        when {\n            intent.getBooleanExtra("__theme_preserve_test", false) -> {\n                switchToConversation()\n                currentChatLines.clear()\n                currentChatLines += ChatLine("user", "BUILD110_TEMA_KORUMA_KULLANICI")\n                currentChatLines += ChatLine("assistant", "BUILD110_TEMA_KORUMA_ASISTAN")\n                renderCurrentChatLines()\n                input.setText("BUILD110_TASLAK_KORUNDU")\n                root.postDelayed({ toggleTheme() }, 5000L)\n            }\n            intent.getBooleanExtra("__scroll_stream_test", false) -> {\n                switchToConversation()\n                addUserBubble("BUILD110 uzun yanıt kaydırma testi")\n                root.postDelayed({\n                    conversationScroll.setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->\n                        android.util.Log.d("BUILD110_SCROLL", "old=$oldScrollY y=$scrollY")\n                    }\n                    val assistant = addAssistantMessage()\n                    assistant.thinking.stopAndHide()\n                    assistant.answer.visibility = View.VISIBLE\n                    scrollToBottom(force = true)\n                    val typing = TypingSession(this@MainActivity, assistant.answer) { scrollToBottom(force = false) }\n                    launch {\n                        repeat(150) { index ->\n                            typing.append("Akış ${index + 1}: Uzun yanıt emülatör üzerinde gerçek zamanlı yazılıyor ve ekranın aşağı doğru kararlı biçimde ilerlemesi gerekiyor. ")\n                            delay(18L)\n                        }\n                        typing.complete()\n                        typing.awaitFinished()\n                        android.util.Log.d("BUILD110_SCROLL", "DONE y=${conversationScroll.scrollY}")\n                    }\n                }, 800L)\n            }\n            intent.getBooleanExtra("__about_test", false) -> {\n                root.postDelayed({ showAbout() }, 1000L)\n            }\n        }\n    }\n\n    private fun registerDownloadReceiver()'''
           if needle not in s:
-              raise SystemExit('preview hook anchor not found')
-          p.write_text(s.replace(needle, preview, 1))
+              raise SystemExit('BUILD110 preview hook anchor not found')
+          p.write_text(s.replace(needle, hook, 1))
           PY
-          cd project109-preview
+          cd project110-preview
           ./gradlew --no-daemon assembleDebug --stacktrace
 
       - name: Create emulator validation script
@@ -106,61 +117,99 @@ jobs:
           cat > emulator-test.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
-          CLEAN_APK="Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk"
-          PREVIEW_APK="project109-preview/app/build/outputs/apk/debug/app-debug.apk"
+          CLEAN_APK="Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk"
+          PREVIEW_APK="project110-preview/app/build/outputs/apk/debug/app-debug.apk"
           APP_PACKAGE="com.internetsizyapayzeka.app2026"
           ACTIVITY="com.offlineai.app.MainActivity"
+          : > emulator-status.txt
 
           test -f "$CLEAN_APK"
           test -f "$PREVIEW_APK"
 
-          echo '=== CLEAN APK NORMAL LAUNCH ==='
+          echo '=== CLEAN APK NORMAL LAUNCH ===' | tee -a emulator-status.txt
           adb install -r "$CLEAN_APK"
           adb logcat -c
           adb shell am force-stop "$APP_PACKAGE" || true
           adb shell monkey -p "$APP_PACKAGE" -c android.intent.category.LAUNCHER 1
           sleep 8
           CLEAN_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
-          echo "CLEAN_APP_PID=$CLEAN_PID" | tee emulator-status.txt
+          echo "CLEAN_APP_PID=$CLEAN_PID" | tee -a emulator-status.txt
+          test -n "$CLEAN_PID"
           adb exec-out screencap -p > emulator-normal-launch.png
           adb logcat -d AndroidRuntime:E '*:S' > clean-androidruntime-errors.txt || true
-          test -n "$CLEAN_PID"
           ! grep -q 'FATAL EXCEPTION' clean-androidruntime-errors.txt
           ! grep -q "Process: $APP_PACKAGE" clean-androidruntime-errors.txt
 
-          echo '=== CHAT UI PREVIEW / SCROLL TEST ==='
+          echo '=== THEME PRESERVES CURRENT CHAT ===' | tee -a emulator-status.txt
           adb install -r "$PREVIEW_APK"
+          adb shell am force-stop "$APP_PACKAGE" || true
+          adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __theme_preserve_test true
+          sleep 2
+          THEME_PID_BEFORE="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          adb shell uiautomator dump /sdcard/theme-before.xml >/dev/null
+          adb pull /sdcard/theme-before.xml theme-before.xml >/dev/null
+          grep -q 'BUILD110_TEMA_KORUMA_KULLANICI' theme-before.xml
+          grep -q 'BUILD110_TEMA_KORUMA_ASISTAN' theme-before.xml
+          grep -q 'BUILD110_TASLAK_KORUNDU' theme-before.xml
+          adb exec-out screencap -p > emulator-theme-before.png
+          sleep 5
+          THEME_PID_AFTER="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          test -n "$THEME_PID_AFTER"
+          test "$THEME_PID_BEFORE" = "$THEME_PID_AFTER"
+          adb shell uiautomator dump /sdcard/theme-after.xml >/dev/null
+          adb pull /sdcard/theme-after.xml theme-after.xml >/dev/null
+          grep -q 'BUILD110_TEMA_KORUMA_KULLANICI' theme-after.xml
+          grep -q 'BUILD110_TEMA_KORUMA_ASISTAN' theme-after.xml
+          grep -q 'BUILD110_TASLAK_KORUNDU' theme-after.xml
+          adb shell run-as "$APP_PACKAGE" cat shared_prefs/offline_ai_prefs.xml > theme-prefs.xml
+          grep -q 'name="dark_theme" value="false"' theme-prefs.xml
+          adb exec-out screencap -p > emulator-theme-after.png
+          echo "THEME_PID_BEFORE=$THEME_PID_BEFORE THEME_PID_AFTER=$THEME_PID_AFTER" | tee -a emulator-status.txt
+
+          echo '=== ABOUT CONTENT ===' | tee -a emulator-status.txt
+          adb shell am force-stop "$APP_PACKAGE" || true
+          adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __about_test true
+          sleep 3
+          adb shell uiautomator dump /sdcard/about.xml >/dev/null
+          adb pull /sdcard/about.xml about.xml >/dev/null
+          grep -q 'İlhan Kardeş' about.xml
+          grep -q 'ilhankardesx@gmail.com' about.xml
+          grep -q 'KULLANIM KILAVUZU' about.xml
+          adb exec-out screencap -p > emulator-about.png
+
+          echo '=== LONG STREAM AUTO-SCROLL STABILITY ===' | tee -a emulator-status.txt
           adb logcat -c
           adb shell am force-stop "$APP_PACKAGE" || true
-          adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __chat_ui_preview true
-          sleep 4
-          PREVIEW_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
-          echo "PREVIEW_APP_PID=$PREVIEW_PID" | tee -a emulator-status.txt
-          test -n "$PREVIEW_PID"
-
-          adb shell uiautomator dump /sdcard/window.xml >/dev/null
-          adb pull /sdcard/window.xml chat-ui.xml >/dev/null
-          grep -q 'BUILD 109 sohbet akış testi' chat-ui.xml
-          grep -q 'Bir şey sorun' chat-ui.xml
-          adb exec-out screencap -p > emulator-chat-before-scroll.png
-
-          # Preview starts at the bottom; swipe DOWN to reveal older messages above.
-          adb shell input swipe 720 650 720 2050 700
-          sleep 2
-          adb exec-out screencap -p > emulator-chat-after-scroll.png
-          if cmp -s emulator-chat-before-scroll.png emulator-chat-after-scroll.png; then
-            echo 'ERROR: chat screenshot did not change after scroll' | tee -a emulator-status.txt
-            exit 1
-          fi
-
+          adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __scroll_stream_test true
+          sleep 1
+          adb exec-out screencap -p > emulator-stream-start.png
+          sleep 9
+          STREAM_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          test -n "$STREAM_PID"
+          adb logcat -d -s BUILD110_SCROLL:D '*:S' > scroll-log.txt || true
+          grep -q 'DONE y=' scroll-log.txt
+          python - <<'PY'
+          import re, sys
+          vals=[]
+          for line in open('scroll-log.txt', encoding='utf-8', errors='ignore'):
+              m=re.search(r'old=(\d+) y=(\d+)', line)
+              if m:
+                  vals.append(int(m.group(2)))
+          if len(vals) < 5:
+              print('Not enough scroll samples:', len(vals)); sys.exit(1)
+          drops=[(a,b) for a,b in zip(vals, vals[1:]) if b < a - 4]
+          print('scroll_samples=', len(vals), 'first=', vals[0], 'last=', vals[-1], 'drops=', drops[:10])
+          if drops:
+              sys.exit(1)
+          if vals[-1] <= vals[0]:
+              sys.exit(1)
+          PY
+          adb exec-out screencap -p > emulator-stream-finish.png
           adb logcat -d AndroidRuntime:E '*:S' > preview-androidruntime-errors.txt || true
           ! grep -q 'FATAL EXCEPTION' preview-androidruntime-errors.txt
           ! grep -q "Process: $APP_PACKAGE" preview-androidruntime-errors.txt
 
-          adb shell dumpsys activity activities > emulator-activities.txt || true
-          grep -q "$APP_PACKAGE" emulator-activities.txt
-          sha256sum emulator-chat-before-scroll.png emulator-chat-after-scroll.png > screenshot-sha256.txt
-          echo 'PASS: clean APK launched; BUILD109 conversation UI rendered and visibly scrolled without AndroidRuntime crash' | tee -a emulator-status.txt
+          echo 'PASS: BUILD110 clean launch + theme preservation + About content + monotonic long-answer auto-scroll + no AndroidRuntime crash' | tee -a emulator-status.txt
           EOF
           chmod +x emulator-test.sh
 
@@ -171,7 +220,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm || true
           ls -l /dev/kvm || true
 
-      - name: Boot emulator and validate BUILD109
+      - name: Boot emulator and validate BUILD110
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -182,28 +231,33 @@ jobs:
           disable-animations: true
           script: bash emulator-test.sh
 
-      - name: Upload BUILD109 emulator evidence
+      - name: Upload BUILD110 emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build109-emulator-evidence
+          name: build110-emulator-evidence
           path: |
             emulator-status.txt
             emulator-normal-launch.png
-            emulator-chat-before-scroll.png
-            emulator-chat-after-scroll.png
-            chat-ui.xml
+            emulator-theme-before.png
+            emulator-theme-after.png
+            emulator-about.png
+            emulator-stream-start.png
+            emulator-stream-finish.png
+            theme-before.xml
+            theme-after.xml
+            theme-prefs.xml
+            about.xml
+            scroll-log.txt
             clean-androidruntime-errors.txt
             preview-androidruntime-errors.txt
-            emulator-activities.txt
             apk-badging.txt
             apk-sha256.txt
-            screenshot-sha256.txt
           if-no-files-found: warn
 
       - name: Upload clean APK only after all emulator tests pass
         uses: actions/upload-artifact@v4
         with:
-          name: Internetsiz-Yapay-Zeka-build109-EMULATOR-PASSED-apk
-          path: Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk
+          name: Internetsiz-Yapay-Zeka-build110-EMULATOR-PASSED-apk
+          path: Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk
           if-no-files-found: error
