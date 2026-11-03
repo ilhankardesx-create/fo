@@ -52,6 +52,16 @@ jobs:
           disable-animations: true
           script: bash offlineai110/emulator-final-verify.sh
 
+      - name: Split exact tested APK for lossless retrieval
+        run: |
+          rm -rf apk-parts
+          mkdir -p apk-parts
+          split -b 5M -d -a 3 Internetsiz-Yapay-Zeka-1.2-build110-FINAL-EMULATOR-PASSED.apk apk-parts/apk.part.
+          sha256sum apk-parts/apk.part.* > apk-parts/PARTS_SHA256.txt
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build110-FINAL-EMULATOR-PASSED.apk > apk-parts/APK_SHA256.txt
+          cat apk-parts/APK_SHA256.txt
+          wc -c apk-parts/apk.part.*
+
       - name: Upload final evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,9 +87,18 @@ jobs:
             apk-sha256.txt
           if-no-files-found: warn
 
+      - name: Upload tested APK parts after gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-build110-FINAL-APK-PARTS
+          path: apk-parts/
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload clean APK only after final gate passes
         uses: actions/upload-artifact@v4
         with:
           name: Internetsiz-Yapay-Zeka-build110-FINAL-EMULATOR-PASSED-apk
           path: Internetsiz-Yapay-Zeka-1.2-build110-FINAL-EMULATOR-PASSED.apk
+          compression-level: 0
           if-no-files-found: error
