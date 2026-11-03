@@ -1,0 +1,242 @@
+name: BUILD111 Final Emulator Gate
+
+on:
+  push:
+    branches: [ "offline-ai-build111" ]
+    paths:
+      - "offlineai111/**"
+      - ".github/workflows/build-offline-ai-111-final.yml"
+  workflow_dispatch:
+
+jobs:
+  build111:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      PKG: com.internetsizyapayzeka.app2026
+      ACT: com.offlineai.app.MainActivity
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK 36
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Reconstruct exact BUILD111 source
+        run: |
+          cat offlineai108/chunk_00.b64 offlineai108/chunk_01.b64 offlineai108/chunk_02.b64 offlineai108/chunk_03.b64 offlineai108/chunk_04.b64 | base64 -d > base108.zip
+          echo "cd9564a71b2b6e8e119d2851788ecd27d7a173cd246b7749169bd1c9a0ac0e88  base108.zip" | sha256sum -c -
+          rm -rf project111 && mkdir project111
+          unzip -q base108.zip -d project111
+          chmod +x project111/gradlew
+          FILE="project111/app/src/main/java/com/offlineai/app/MainActivity.kt"
+          sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' "$FILE"
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' "$FILE"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('project111/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s=p.read_text()
+          old='''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
+          new='''        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
+          if old not in s: raise SystemExit('BUILD108 startup anchor missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          patch -d project111 -p1 < offlineai109/build109-ui.patch
+          patch -d project111 -p1 < offlineai110/build110-fixes.patch
+          patch -d project111 -p1 < offlineai111/build111-ui.patch
+          echo "d3cfd55e6f08722b3ba3fbaac832ab687356b458f90e4b57408966f0c98dfde3  project111/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "77ad9f829175b75babc79b47e5e469b68930a8491d1637c878c91e7aa7a283e2  project111/app/build.gradle.kts" | sha256sum -c -
+          grep -q 'versionCode = 111' project111/app/build.gradle.kts
+          grep -q 'private fun showThemedPopup' "$FILE"
+          ! grep -q 'PopupMenu' "$FILE"
+          ! grep -q 'Typeface.create("serif"' "$FILE"
+          grep -q 'Typeface.create("sans-serif", Typeface.NORMAL)' "$FILE"
+          grep -q 'Typeface.create("sans-serif", Typeface.BOLD)' "$FILE"
+          grep -q 'delay(4L)' "$FILE"
+          grep -q 'else delay(5L)' "$FILE"
+
+      - name: Build clean BUILD111 APK
+        working-directory: project111
+        run: ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Verify clean APK metadata
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project111/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
+          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='111' versionName='1.2'" apk-badging.txt
+          cp project111/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk | tee apk-sha256.txt
+
+      - name: Build emulator validation APK
+        run: |
+          rm -rf project111-preview && cp -a project111 project111-preview
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('project111-preview/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s=p.read_text()
+          needle='''        restoreModel()\n    }\n\n    private fun registerDownloadReceiver()'''
+          hook='''        restoreModel()\n        when {\n            intent.getBooleanExtra("__theme_menu_test", false) -> {\n                switchToConversation()\n                currentChatLines.clear()\n                currentChatLines += ChatLine("user", "BUILD111_TEMA_KORUMA_KULLANICI")\n                currentChatLines += ChatLine("assistant", "BUILD111_TEMA_KORUMA_ASISTAN")\n                renderCurrentChatLines()\n                input.setText("BUILD111_TASLAK_KORUNDU")\n            }\n            intent.getBooleanExtra("__typing_test", false) -> {\n                switchToConversation()\n                addUserBubble("BUILD111 kullanıcı yazı tipi testi")\n                root.postDelayed({\n                    conversationScroll.setOnScrollChangeListener { _, _, y, _, oldY -> android.util.Log.d("BUILD111_SCROLL", "old=$oldY y=$y") }\n                    val assistant = addAssistantMessage()\n                    assistant.thinking.stopAndHide()\n                    assistant.answer.visibility = View.VISIBLE\n                    val typing = TypingSession(this@MainActivity, assistant.answer) { scrollToBottom(force = false) }\n                    val started = SystemClock.uptimeMillis()\n                    launch {\n                        typing.append((1..85).joinToString(" ") { "Hızlı akış ${'$'}it: Yazı ChatGPT tarzı sans-serif görünmeli ve ekran aşağı doğru kararlı ilerlemelidir." })\n                        typing.complete()\n                        typing.awaitFinished()\n                        android.util.Log.d("BUILD111_TYPING", "DONE ms=${'$'}{SystemClock.uptimeMillis() - started} chars=${'$'}{assistant.answer.text.length}")\n                    }\n                }, 700L)\n            }\n        }\n    }\n\n    private fun registerDownloadReceiver()'''
+          if needle not in s: raise SystemExit('preview hook anchor missing')
+          p.write_text(s.replace(needle,hook,1))
+          PY
+          cd project111-preview
+          ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Create emulator test script
+        run: |
+          cat > emulator-test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          CLEAN="Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk"
+          PREVIEW="project111-preview/app/build/outputs/apk/debug/app-debug.apk"
+          : > emulator-status.txt
+
+          tap_text() {
+            local wanted="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null
+            adb pull /sdcard/window.xml window.xml >/dev/null
+            read X Y < <(python - "$wanted" <<'PY'
+          import re,sys,xml.etree.ElementTree as ET
+          wanted=sys.argv[1]
+          root=ET.parse('window.xml').getroot()
+          for n in root.iter('node'):
+              if n.attrib.get('text') == wanted:
+                  m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', n.attrib.get('bounds',''))
+                  if m:
+                      a,b,c,d=map(int,m.groups()); print((a+c)//2,(b+d)//2); raise SystemExit
+          raise SystemExit(2)
+          PY
+            )
+            adb shell input tap "$X" "$Y"
+          }
+
+          echo '=== CLEAN LAUNCH ===' | tee -a emulator-status.txt
+          adb install -r "$CLEAN"
+          adb logcat -c
+          adb shell am force-stop "$PKG" || true
+          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+          sleep 8
+          CLEAN_PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          test -n "$CLEAN_PID"
+          adb exec-out screencap -p > emulator-clean-launch.png
+          adb logcat -d AndroidRuntime:E '*:S' > clean-crash.txt || true
+          ! grep -q 'FATAL EXCEPTION' clean-crash.txt
+
+          echo '=== DARK/LIGHT MENU + THEME PRESERVE ===' | tee -a emulator-status.txt
+          adb install -r "$PREVIEW"
+          adb shell am force-stop "$PKG" || true
+          adb shell am start -n "$PKG/$ACT" --ez __theme_menu_test true
+          sleep 2
+          PID_BEFORE="$(adb shell pidof "$PKG" | tr -d '\r')"
+          adb shell uiautomator dump /sdcard/before.xml >/dev/null
+          adb pull /sdcard/before.xml before.xml >/dev/null
+          grep -q 'BUILD111_TEMA_KORUMA_KULLANICI' before.xml
+          grep -q 'BUILD111_TEMA_KORUMA_ASISTAN' before.xml
+          grep -q 'BUILD111_TASLAK_KORUNDU' before.xml
+          tap_text '⚙'
+          sleep 1
+          adb shell uiautomator dump /sdcard/menu-dark.xml >/dev/null
+          adb pull /sdcard/menu-dark.xml menu-dark.xml >/dev/null
+          grep -q 'Model İndir' menu-dark.xml
+          grep -q 'Açık tema' menu-dark.xml
+          adb exec-out screencap -p > emulator-menu-dark.png
+          tap_text 'Açık tema'
+          sleep 2
+          PID_AFTER="$(adb shell pidof "$PKG" | tr -d '\r')"
+          test "$PID_BEFORE" = "$PID_AFTER"
+          adb shell uiautomator dump /sdcard/after.xml >/dev/null
+          adb pull /sdcard/after.xml after.xml >/dev/null
+          grep -q 'BUILD111_TEMA_KORUMA_KULLANICI' after.xml
+          grep -q 'BUILD111_TEMA_KORUMA_ASISTAN' after.xml
+          grep -q 'BUILD111_TASLAK_KORUNDU' after.xml
+          tap_text '⚙'
+          sleep 1
+          adb shell uiautomator dump /sdcard/menu-light.xml >/dev/null
+          adb pull /sdcard/menu-light.xml menu-light.xml >/dev/null
+          grep -q 'Koyu tema' menu-light.xml
+          adb exec-out screencap -p > emulator-menu-light.png
+          adb shell input keyevent 4
+
+          echo '=== FONT + 3X TYPING + SCROLL ===' | tee -a emulator-status.txt
+          adb logcat -c
+          adb shell am force-stop "$PKG" || true
+          adb shell am start -n "$PKG/$ACT" --ez __typing_test true
+          sleep 6
+          adb logcat -d -s BUILD111_TYPING:D BUILD111_SCROLL:D '*:S' > typing-scroll-log.txt || true
+          grep -q 'BUILD111_TYPING.*DONE ms=' typing-scroll-log.txt
+          python - <<'PY'
+          import re,sys
+          text=open('typing-scroll-log.txt',encoding='utf-8',errors='ignore').read()
+          m=re.search(r'DONE ms=(\d+) chars=(\d+)',text)
+          if not m: sys.exit(1)
+          ms,chars=map(int,m.groups())
+          print('typing_ms=',ms,'chars=',chars)
+          if ms >= 1800 or chars < 1000: sys.exit(1)
+          vals=[]
+          for old,y in re.findall(r'old=(\d+) y=(\d+)',text): vals.append(int(y))
+          print('scroll_samples=',len(vals),'first=',vals[:3],'last=',vals[-3:])
+          if len(vals)<5: sys.exit(1)
+          drops=[(a,b) for a,b in zip(vals,vals[1:]) if b < a-4]
+          if drops: print('drops=',drops[:10]); sys.exit(1)
+          PY
+          adb exec-out screencap -p > emulator-font-typing.png
+          TEST_PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          test -n "$TEST_PID"
+          adb logcat -d AndroidRuntime:E '*:S' > preview-crash.txt || true
+          ! grep -q 'FATAL EXCEPTION' preview-crash.txt
+
+          echo "PASS: BUILD111 clean launch + dark/light readable menu + theme chat preserved + sans-serif chat + 3x typing + stable scroll + no crash" | tee -a emulator-status.txt
+          EOF
+          chmod +x emulator-test.sh
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Run BUILD111 emulator gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash emulator-test.sh
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build111-emulator-evidence
+          path: |
+            emulator-status.txt
+            emulator-clean-launch.png
+            emulator-menu-dark.png
+            emulator-menu-light.png
+            emulator-font-typing.png
+            before.xml
+            after.xml
+            menu-dark.xml
+            menu-light.xml
+            typing-scroll-log.txt
+            clean-crash.txt
+            preview-crash.txt
+            apk-badging.txt
+            apk-sha256.txt
+          if-no-files-found: warn
+
+      - name: Upload clean APK only after gate passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-build111-FINAL-EMULATOR-PASSED-apk
+          path: Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk
+          if-no-files-found: error
