@@ -12,20 +12,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
 
       - name: Reconstruct and verify source ZIP
         run: |
@@ -36,6 +41,7 @@ jobs:
               offlineai108/chunk_04.b64 \
               | base64 -d > offlineai108-source.zip
           echo "cd9564a71b2b6e8e119d2851788ecd27d7a173cd246b7749169bd1c9a0ac0e88  offlineai108-source.zip" | sha256sum -c -
+          rm -rf project108
           mkdir project108
           unzip -q offlineai108-source.zip -d project108
           chmod +x project108/gradlew
@@ -43,6 +49,11 @@ jobs:
       - name: Build debug APK
         working-directory: project108
         run: ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Verify APK
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project108/app/build/outputs/apk/debug/app-debug.apk | head -n 5
+          sha256sum project108/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
