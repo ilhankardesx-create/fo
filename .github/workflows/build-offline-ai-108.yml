@@ -1,17 +1,17 @@
-name: Build and Emulator-Test Offline AI 108 APK
+name: Build and Emulator-Test Offline AI 109 APK
 
 on:
   push:
-    branches: [ "offline-ai-build108" ]
+    branches: [ "offline-ai-build109" ]
     paths:
-      - "offlineai108/**"
+      - "offlineai109/**"
       - ".github/workflows/build-offline-ai-108.yml"
   workflow_dispatch:
 
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -33,7 +33,7 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Reconstruct and verify source ZIP
+      - name: Reconstruct BUILD108 source base
         run: |
           cat offlineai108/chunk_00.b64 \
               offlineai108/chunk_01.b64 \
@@ -42,93 +42,124 @@ jobs:
               offlineai108/chunk_04.b64 \
               | base64 -d > offlineai108-source.zip
           echo "cd9564a71b2b6e8e119d2851788ecd27d7a173cd246b7749169bd1c9a0ac0e88  offlineai108-source.zip" | sha256sum -c -
-          rm -rf project108
-          mkdir project108
-          unzip -q offlineai108-source.zip -d project108
-          chmod +x project108/gradlew
+          rm -rf project109
+          mkdir project109
+          unzip -q offlineai108-source.zip -d project109
+          chmod +x project109/gradlew
 
-      - name: Apply Kotlin compile fixes
+      - name: Apply established BUILD108 source fixes
         run: |
-          FILE="project108/app/src/main/java/com/offlineai/app/MainActivity.kt"
+          FILE="project109/app/src/main/java/com/offlineai/app/MainActivity.kt"
           sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' "$FILE"
           sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' "$FILE"
-          ! grep -q 'ScrollView.LayoutParams' "$FILE"
-          ! grep -q 'isTextSelectable = true' "$FILE"
-
-      - name: Apply startup crash fix
-        run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('project108/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          p = Path('project109/app/src/main/java/com/offlineai/app/MainActivity.kt')
           s = p.read_text()
           old = '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
           new = '''        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
           if old not in s:
-              raise SystemExit('startup block not found exactly once')
+              raise SystemExit('BUILD108 startup block not found')
           p.write_text(s.replace(old, new, 1))
           PY
-          nl -ba project108/app/src/main/java/com/offlineai/app/MainActivity.kt | sed -n '175,192p'
 
-      - name: Build debug APK
-        working-directory: project108
+      - name: Apply BUILD109 full-screen conversation UI
+        run: |
+          patch -d project109 -p1 < offlineai109/build109-ui.patch
+          echo "bdfcbcdd3310e39d019be2d9a5ac007d9b143c0c56fcec5d500afb7f5cc406c3  project109/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "9cba84c3d35e55d3eb66c706bcf03a8b48e59571bca751a7a0231a1c9077d12b  project109/app/build.gradle.kts" | sha256sum -c -
+          grep -q 'versionCode = 109' project109/app/build.gradle.kts
+          grep -q 'clipToPadding = false' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'Floating composer' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
+          grep -q 'engine.requestStop()' project109/app/src/main/java/com/offlineai/app/MainActivity.kt
+
+      - name: Build clean BUILD109 APK
+        working-directory: project109
         run: ./gradlew --no-daemon assembleDebug --stacktrace
 
-      - name: Verify APK metadata
+      - name: Verify clean APK metadata
         run: |
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project108/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
-          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='108' versionName='1.2'" apk-badging.txt
-          sha256sum project108/app/build/outputs/apk/debug/app-debug.apk | tee apk-sha256.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project109/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
+          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='109' versionName='1.2'" apk-badging.txt
+          cp project109/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk | tee apk-sha256.txt
 
-      - name: Create emulator launch-test script
+      - name: Build emulator-only conversation preview APK
+        run: |
+          rm -rf project109-preview
+          cp -a project109 project109-preview
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('project109-preview/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s = p.read_text()
+          needle = '''        restoreModel()\n    }\n\n    private fun registerDownloadReceiver()'''
+          preview = '''        restoreModel()\n        if (BuildConfig.DEBUG && intent.getBooleanExtra("__chat_ui_preview", false)) {\n            switchToConversation()\n            addUserBubble("arayüzde ufak değişiklik yapacağız sadece dayı")\n            repeat(6) { index ->\n                val assistant = addAssistantMessage()\n                assistant.thinking.stopAndHide()\n                assistant.answer.visibility = View.VISIBLE\n                assistant.answer.text = "BUILD 109 sohbet akış testi ${index + 1}. Mesajlar artık üst ve alt panellerin ayırdığı küçük bir kutuda değil; ekran boyunca akıyor. Alt yazma çubuğu sabit kalıyor ve sohbet onun arkasından kaydırılabiliyor."\n                addUserBubble("Test mesajı ${index + 2}: sohbet ekran boyunca devam etsin")\n            }\n            scrollToBottom()\n        }\n    }\n\n    private fun registerDownloadReceiver()'''
+          if needle not in s:
+              raise SystemExit('preview hook anchor not found')
+          p.write_text(s.replace(needle, preview, 1))
+          PY
+          cd project109-preview
+          ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Create emulator validation script
         run: |
           cat > emulator-test.sh <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
-          APK="project108/app/build/outputs/apk/debug/app-debug.apk"
+          CLEAN_APK="Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk"
+          PREVIEW_APK="project109-preview/app/build/outputs/apk/debug/app-debug.apk"
           APP_PACKAGE="com.internetsizyapayzeka.app2026"
+          ACTIVITY="com.offlineai.app.MainActivity"
 
-          echo "Installing APK: $APK"
-          test -f "$APK"
-          adb install -r "$APK"
-          adb shell pm list packages | grep -F "$APP_PACKAGE"
+          test -f "$CLEAN_APK"
+          test -f "$PREVIEW_APK"
 
+          echo '=== CLEAN APK NORMAL LAUNCH ==='
+          adb install -r "$CLEAN_APK"
           adb logcat -c
           adb shell am force-stop "$APP_PACKAGE" || true
           adb shell monkey -p "$APP_PACKAGE" -c android.intent.category.LAUNCHER 1
-          sleep 10
+          sleep 8
+          CLEAN_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          echo "CLEAN_APP_PID=$CLEAN_PID" | tee emulator-status.txt
+          adb exec-out screencap -p > emulator-normal-launch.png
+          adb logcat -d AndroidRuntime:E '*:S' > clean-androidruntime-errors.txt || true
+          test -n "$CLEAN_PID"
+          ! grep -q 'FATAL EXCEPTION' clean-androidruntime-errors.txt
+          ! grep -q "Process: $APP_PACKAGE" clean-androidruntime-errors.txt
 
-          PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
-          echo "APP_PID=$PID" | tee emulator-status.txt
+          echo '=== CHAT UI PREVIEW / SCROLL TEST ==='
+          adb install -r "$PREVIEW_APK"
+          adb logcat -c
+          adb shell am force-stop "$APP_PACKAGE" || true
+          adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __chat_ui_preview true
+          sleep 4
+          PREVIEW_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          echo "PREVIEW_APP_PID=$PREVIEW_PID" | tee -a emulator-status.txt
+          test -n "$PREVIEW_PID"
+
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null
+          adb pull /sdcard/window.xml chat-ui.xml >/dev/null
+          grep -q 'BUILD 109 sohbet akış testi' chat-ui.xml
+          grep -q 'Bir şey sorun' chat-ui.xml
+          adb exec-out screencap -p > emulator-chat-before-scroll.png
+
+          adb shell input swipe 720 2050 720 650 700
+          sleep 2
+          adb exec-out screencap -p > emulator-chat-after-scroll.png
+          if cmp -s emulator-chat-before-scroll.png emulator-chat-after-scroll.png; then
+            echo 'ERROR: chat screenshot did not change after scroll' | tee -a emulator-status.txt
+            exit 1
+          fi
+
+          adb logcat -d AndroidRuntime:E '*:S' > preview-androidruntime-errors.txt || true
+          ! grep -q 'FATAL EXCEPTION' preview-androidruntime-errors.txt
+          ! grep -q "Process: $APP_PACKAGE" preview-androidruntime-errors.txt
 
           adb shell dumpsys activity activities > emulator-activities.txt || true
-          adb exec-out screencap -p > emulator-launch.png || true
-          adb logcat -d > emulator-logcat.txt || true
-          adb logcat -d AndroidRuntime:E '*:S' > androidruntime-errors.txt || true
-
-          if [ -z "$PID" ]; then
-            echo "ERROR: App process is not alive after launch" | tee -a emulator-status.txt
-            cat androidruntime-errors.txt || true
-            exit 1
-          fi
-
-          if grep -q "FATAL EXCEPTION" androidruntime-errors.txt; then
-            echo "ERROR: AndroidRuntime fatal exception detected" | tee -a emulator-status.txt
-            cat androidruntime-errors.txt
-            exit 1
-          fi
-
-          if grep -q "Process: $APP_PACKAGE" androidruntime-errors.txt; then
-            echo "ERROR: AndroidRuntime process crash detected" | tee -a emulator-status.txt
-            cat androidruntime-errors.txt
-            exit 1
-          fi
-
-          if ! grep -q "$APP_PACKAGE" emulator-activities.txt; then
-            echo "ERROR: App package is not present in activity state after launch" | tee -a emulator-status.txt
-            exit 1
-          fi
-
-          echo "PASS: App installed, launched and stayed alive without AndroidRuntime fatal crash" | tee -a emulator-status.txt
+          grep -q "$APP_PACKAGE" emulator-activities.txt
+          sha256sum emulator-chat-before-scroll.png emulator-chat-after-scroll.png > screenshot-sha256.txt
+          echo 'PASS: clean APK launched; BUILD109 conversation UI rendered and visibly scrolled without AndroidRuntime crash' | tee -a emulator-status.txt
           EOF
           chmod +x emulator-test.sh
 
@@ -139,7 +170,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm || true
           ls -l /dev/kvm || true
 
-      - name: Boot emulator and launch-test APK
+      - name: Boot emulator and validate BUILD109
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -150,24 +181,28 @@ jobs:
           disable-animations: true
           script: bash emulator-test.sh
 
-      - name: Upload emulator evidence
+      - name: Upload BUILD109 emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build108-emulator-evidence
+          name: build109-emulator-evidence
           path: |
             emulator-status.txt
-            emulator-launch.png
-            emulator-logcat.txt
+            emulator-normal-launch.png
+            emulator-chat-before-scroll.png
+            emulator-chat-after-scroll.png
+            chat-ui.xml
+            clean-androidruntime-errors.txt
+            preview-androidruntime-errors.txt
             emulator-activities.txt
-            androidruntime-errors.txt
             apk-badging.txt
             apk-sha256.txt
+            screenshot-sha256.txt
           if-no-files-found: warn
 
-      - name: Upload APK only after emulator pass
+      - name: Upload clean APK only after all emulator tests pass
         uses: actions/upload-artifact@v4
         with:
-          name: Internetsiz-Yapay-Zeka-build108-EMULATOR-PASSED-apk
-          path: project108/app/build/outputs/apk/debug/app-debug.apk
+          name: Internetsiz-Yapay-Zeka-build109-EMULATOR-PASSED-apk
+          path: Internetsiz-Yapay-Zeka-1.2-build109-EMULATOR-PASSED.apk
           if-no-files-found: error
