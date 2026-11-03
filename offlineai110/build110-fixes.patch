@@ -1,0 +1,221 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -10,7 +10,7 @@
+         applicationId = "com.internetsizyapayzeka.app2026"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 109
++        versionCode = 110
+         versionName = "1.2"
+     }
+     buildTypes {
+--- a/app/src/main/java/com/offlineai/app/MainActivity.kt
++++ b/app/src/main/java/com/offlineai/app/MainActivity.kt
+@@ -19,6 +19,7 @@
+ import android.os.Build
+ import android.os.Bundle
+ import android.os.Environment
++import android.os.SystemClock
+ import android.provider.OpenableColumns
+ import android.text.InputType
+ import android.view.Gravity
+@@ -146,6 +147,8 @@
+     private var isDarkTheme = true
+     private var currentChatId = System.currentTimeMillis()
+     private val currentChatLines = mutableListOf<ChatLine>()
++    private var autoScrollPosted = false
++    private var lastAutoScrollAt = 0L
+ 
+     private val bg: Int get() = if (isDarkTheme) Color.rgb(11, 12, 15) else Color.rgb(248, 249, 252)
+     private val primaryText: Int get() = if (isDarkTheme) Color.rgb(248, 248, 250) else Color.rgb(24, 26, 31)
+@@ -184,10 +187,7 @@
+         engine = LocalModelEngine(this)
+         registerDownloadReceiver()
+         buildUi()
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+-            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+-            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+-        }
++        applySystemBarAppearance()
+         restoreModel()
+     }
+ 
+@@ -961,7 +961,7 @@
+         launch {
+             val stripper = ReasoningStripper()
+             var firstVisibleAnswer = true
+-            val typing = TypingSession(this@MainActivity, assistant.answer) { scrollToBottom() }
++            val typing = TypingSession(this@MainActivity, assistant.answer) { scrollToBottom(force = false) }
+             activeTyping?.cancel(); activeTyping = typing
+             val result = runCatching {
+                 engine.streamReply(prompt, image?.absolutePath).collect { rawPiece ->
+@@ -1081,10 +1081,56 @@
+     }
+ 
+     private fun showAbout() {
+-        AlertDialog.Builder(this)
++        val scroll = ScrollView(this).apply {
++            setPadding(dp(4), 0, dp(4), 0)
++        }
++        val text = TextView(this).apply {
++            setTextColor(dialogText)
++            textSize = 15f
++            setLineSpacing(dp(3).toFloat(), 1.12f)
++            setTextIsSelectable(true)
++            setPadding(dp(20), dp(8), dp(20), dp(22))
++            text = """
++                İnternetsiz Yapay Zeka, desteklenen Gemma modellerini doğrudan Android cihazınızda çalıştırmak için geliştirilmiştir. Model kurulduktan sonra sohbet ve yapay zeka işlemleri cihaz üzerinde yapılır. Yeni model dosyalarını indirmek için internet bağlantısı gerekir.
++
++                Geliştirici
++                İlhan Kardeş
++                E-posta: ilhankardesx@gmail.com
++
++                KULLANIM KILAVUZU
++
++                1. Model kurma
++                Ayarlar > Model İndir bölümünden cihazınıza uygun modeli seçin. İndirme Android DownloadManager ile arka planda devam eder. İndirme tamamlandığında model otomatik kurulabilir; gerekirse Modeller ekranındaki Kur seçeneğini kullanabilirsiniz.
++
++                2. Sohbet
++                Alt bölümdeki yazma alanına sorunuzu yazın ve gönder düğmesine dokunun. Yanıt üretilirken gönder düğmesi × simgesine dönüşür; buna dokunarak üretimi durdurabilirsiniz.
++
++                3. Fotoğraf ve dosya
++                + düğmesinden fotoğraf veya dosya ekleyebilirsiniz. Görsel analizi için görsel destekleyen bir model seçilmelidir. TXT, PDF ve DOCX gibi desteklenen belgelerin içeriği sohbete eklenerek analiz edilebilir.
++
++                4. Sohbet geçmişi
++                Ayarlar > Sohbet geçmişi bölümünden daha önce kaydedilmiş konuşmaları görüntüleyebilirsiniz. Yeni sohbet seçeneği mevcut konuşmayı kaydedip temiz bir sohbet başlatır.
++
++                5. Tema
++                Ayarlar menüsündeki Açık tema / Koyu tema seçeneği görünümü değiştirir. Mevcut sohbet tema değişiminde korunur.
++
++                6. Modeli kaldırma
++                Ayarlar > Modeli kaldır seçeneği aktif model dosyasını cihazdan siler. Daha sonra tekrar kullanmak isterseniz modeli yeniden indirmeniz gerekir.
++
++                Not: Büyük modeller daha fazla RAM ve depolama alanı kullanır. Cihazınıza uygun modeli seçmeniz önerilir.
++            """.trimIndent()
++        }
++        scroll.addView(text, FrameLayout.LayoutParams(
++            ViewGroup.LayoutParams.MATCH_PARENT,
++            ViewGroup.LayoutParams.WRAP_CONTENT
++        ))
++        val dialog = AlertDialog.Builder(this)
+             .setTitle("İnternetsiz Yapay Zeka")
+-            .setMessage("Model indirmeleri Android DownloadManager ile arka planda devam eder. İndirme bittiğinde uygulama açıksa otomatik kurulur; kapalıysa Modeller ekranındaki Kur düğmesinden kurulabilir. Yapay zeka işlemleri cihazda çalışır.")
+-            .setPositiveButton("Tamam", null).show()
++            .setView(scroll)
++            .setPositiveButton("Tamam", null)
++            .create()
++        dialog.setOnShowListener { dialog.window?.setBackgroundDrawable(rounded(dialogBg, 20f)) }
++        dialog.show()
+     }
+ 
+     private fun setComposerEnabled(enabled: Boolean) {
+@@ -1094,7 +1140,31 @@
+         send.text = if (enabled) "↑" else "×"
+     }
+ 
+-    private fun scrollToBottom() { conversationScroll.post { conversationScroll.fullScroll(View.FOCUS_DOWN) } }
++    private fun scrollToBottom(force: Boolean = true) {
++        if (!::conversationScroll.isInitialized || conversationScroll.visibility != View.VISIBLE) return
++        if (!force && !isNearConversationBottom()) return
++        if (autoScrollPosted) return
++
++        val now = SystemClock.uptimeMillis()
++        val minInterval = if (force) 0L else 72L
++        val wait = (minInterval - (now - lastAutoScrollAt)).coerceAtLeast(0L)
++        autoScrollPosted = true
++        conversationScroll.postDelayed({
++            autoScrollPosted = false
++            if (!force && !isNearConversationBottom()) return@postDelayed
++            val child = conversationScroll.getChildAt(0) ?: return@postDelayed
++            val maxY = (child.height - conversationScroll.height + conversationScroll.paddingBottom).coerceAtLeast(0)
++            conversationScroll.scrollTo(0, maxY)
++            lastAutoScrollAt = SystemClock.uptimeMillis()
++        }, wait)
++    }
++
++    private fun isNearConversationBottom(): Boolean {
++        if (!::conversationScroll.isInitialized) return true
++        val child = conversationScroll.getChildAt(0) ?: return true
++        val maxY = (child.height - conversationScroll.height + conversationScroll.paddingBottom).coerceAtLeast(0)
++        return maxY - conversationScroll.scrollY <= dp(280)
++    }
+ 
+     private fun displayName(uri: Uri): String? {
+         contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+@@ -1105,9 +1175,74 @@
+     }
+ 
+     private fun toggleTheme() {
++        if (activeTyping != null || (::input.isInitialized && !input.isEnabled)) {
++            Toast.makeText(this, "Yanıt tamamlanınca tema değiştirilebilir.", Toast.LENGTH_SHORT).show()
++            return
++        }
++
+         persistCurrentChat()
+-        prefs().edit().putBoolean(KEY_DARK_THEME, !isDarkTheme).apply()
+-        recreate()
++        val draft = if (::input.isInitialized) input.text.toString() else ""
++        val hadConversation = ::conversationScroll.isInitialized && conversationScroll.visibility == View.VISIBLE
++        val oldScrollY = if (::conversationScroll.isInitialized) conversationScroll.scrollY else 0
++        val wasNearBottom = if (hadConversation) isNearConversationBottom() else true
++
++        isDarkTheme = !isDarkTheme
++        prefs().edit().putBoolean(KEY_DARK_THEME, isDarkTheme).apply()
++        setTheme(if (isDarkTheme) R.style.Theme_OfflineAI else R.style.Theme_OfflineAILight)
++        window.statusBarColor = bg
++        window.navigationBarColor = bg
++        buildUi()
++        applySystemBarAppearance()
++
++        if (engine.isLoaded) {
++            updateReadyStatus(prefs().getString(KEY_MODEL_NAME, "Model") ?: "Model")
++        } else {
++            status.text = "Model seçilmedi"
++        }
++        input.setText(draft)
++        restorePendingAttachmentUi()
++
++        if (hadConversation || currentChatLines.isNotEmpty()) {
++            switchToConversation()
++            renderCurrentChatLines()
++            conversationScroll.post {
++                if (wasNearBottom) {
++                    scrollToBottom(force = true)
++                } else {
++                    val child = conversationScroll.getChildAt(0)
++                    val maxY = ((child?.height ?: 0) - conversationScroll.height + conversationScroll.paddingBottom).coerceAtLeast(0)
++                    conversationScroll.scrollTo(0, oldScrollY.coerceAtMost(maxY))
++                }
++            }
++        }
++    }
++
++    private fun applySystemBarAppearance() {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
++            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
++        }
++    }
++
++    private fun restorePendingAttachmentUi() {
++        when {
++            pendingImage != null -> showAttachment("📷 Fotoğraf eklendi · kaldırmak için dokun")
++            pendingDocumentText != null -> showAttachment("📄 ${pendingDocumentName ?: "Dosya"} · kaldırmak için dokun")
++        }
++    }
++
++    private fun renderCurrentChatLines() {
++        conversationPanel.removeAllViews()
++        currentChatLines.forEach { line ->
++            if (line.role == "user") {
++                addUserBubble(line.text)
++            } else {
++                val assistant = addAssistantMessage()
++                assistant.thinking.stopAndHide()
++                assistant.answer.visibility = View.VISIBLE
++                assistant.answer.text = line.text
++            }
++        }
+     }
+ 
+     private fun recordChatLine(role: String, text: String) {
