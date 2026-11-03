@@ -1,0 +1,173 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -10,7 +10,7 @@
+         applicationId = "com.internetsizyapayzeka.app2026"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 110
++        versionCode = 111
+         versionName = "1.2"
+     }
+     buildTypes {
+--- a/app/src/main/java/com/offlineai/app/MainActivity.kt
++++ b/app/src/main/java/com/offlineai/app/MainActivity.kt
+@@ -33,7 +33,7 @@
+ import android.widget.FrameLayout
+ import android.widget.ImageView
+ import android.widget.LinearLayout
+-import android.widget.PopupMenu
++import android.widget.PopupWindow
+ import android.widget.ProgressBar
+ import android.widget.ScrollView
+ import android.widget.TextView
+@@ -377,6 +377,7 @@
+             setHintTextColor(Color.rgb(168, 171, 179))
+             setTextColor(primaryText)
+             textSize = 17f
++            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+             background = null
+             isSingleLine = false
+             maxLines = 4
+@@ -401,43 +402,71 @@
+     }
+ 
+     private fun showMenu(anchor: View) {
+-        PopupMenu(this, anchor).apply {
+-            menu.add("Model İndir")
+-            menu.add("Model içe aktar")
+-            menu.add("Yeni sohbet")
+-            menu.add("Sohbet geçmişi")
+-            menu.add(if (isDarkTheme) "Açık tema" else "Koyu tema")
+-            menu.add("Modeli kaldır")
+-            menu.add("Hakkında")
+-            setOnMenuItemClickListener { item ->
+-                when (item.title.toString()) {
+-                    "Model İndir" -> showModelsDialog()
+-                    "Model içe aktar" -> openModelPicker()
+-                    "Yeni sohbet" -> newChat()
+-                    "Sohbet geçmişi" -> showChatHistory()
+-                    "Açık tema", "Koyu tema" -> toggleTheme()
+-                    "Modeli kaldır" -> removeModel()
+-                    "Hakkında" -> showAbout()
+-                }
+-                true
++        val items = listOf(
++            "Model İndir",
++            "Model içe aktar",
++            "Yeni sohbet",
++            "Sohbet geçmişi",
++            if (isDarkTheme) "Açık tema" else "Koyu tema",
++            "Modeli kaldır",
++            "Hakkında"
++        )
++        showThemedPopup(anchor, items) { selected ->
++            when (selected) {
++                "Model İndir" -> showModelsDialog()
++                "Model içe aktar" -> openModelPicker()
++                "Yeni sohbet" -> newChat()
++                "Sohbet geçmişi" -> showChatHistory()
++                "Açık tema", "Koyu tema" -> toggleTheme()
++                "Modeli kaldır" -> removeModel()
++                "Hakkında" -> showAbout()
+             }
+-            show()
+         }
+     }
+ 
+     private fun showAttachmentMenu(anchor: View) {
+-        PopupMenu(this, anchor).apply {
+-            menu.add("Fotoğraflar")
+-            menu.add("Dosyalar")
+-            setOnMenuItemClickListener { item ->
+-                when (item.title.toString()) {
+-                    "Fotoğraflar" -> openImagePicker()
+-                    "Dosyalar" -> openFilePicker()
++        showThemedPopup(anchor, listOf("Fotoğraflar", "Dosyalar")) { selected ->
++            when (selected) {
++                "Fotoğraflar" -> openImagePicker()
++                "Dosyalar" -> openFilePicker()
++            }
++        }
++    }
++
++    private fun showThemedPopup(anchor: View, items: List<String>, onSelected: (String) -> Unit) {
++        val popupBg = if (isDarkTheme) Color.rgb(35, 36, 41) else Color.rgb(252, 252, 253)
++        val popupText = if (isDarkTheme) Color.rgb(248, 248, 250) else Color.rgb(25, 27, 31)
++        val popup = PopupWindow(this).apply {
++            width = dp(232)
++            height = ViewGroup.LayoutParams.WRAP_CONTENT
++            isFocusable = true
++            isOutsideTouchable = true
++            elevation = dp(10).toFloat()
++            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
++        }
++        val body = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(dp(6), dp(6), dp(6), dp(6))
++            background = rounded(popupBg, 14f)
++        }
++        items.forEach { label ->
++            val row = TextView(this).apply {
++                text = label
++                setTextColor(popupText)
++                textSize = 16f
++                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
++                gravity = Gravity.CENTER_VERTICAL
++                setPadding(dp(16), 0, dp(16), 0)
++                minHeight = dp(50)
++                setOnClickListener {
++                    popup.dismiss()
++                    onSelected(label)
+                 }
+-                true
+             }
+-            show()
++            body.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+         }
++        popup.contentView = body
++        popup.showAsDropDown(anchor, 0, dp(4))
+     }
+ 
+     private fun showModelsDialog() {
+@@ -999,8 +1028,8 @@
+             text = message
+             setTextColor(primaryText)
+             textSize = 16f
+-            typeface = Typeface.DEFAULT_BOLD
+-            setLineSpacing(0f, 1.12f)
++            typeface = Typeface.create("sans-serif", Typeface.BOLD)
++            setLineSpacing(0f, 1.16f)
+             setPadding(dp(17), dp(12), dp(17), dp(12))
+             background = rounded(panel2, 22f)
+         }
+@@ -1022,8 +1051,8 @@
+             visibility = View.GONE
+             setTextColor(assistantText)
+             textSize = 18f
+-            typeface = Typeface.create("serif", Typeface.NORMAL)
+-            setLineSpacing(dp(4).toFloat(), 1.18f)
++            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
++            setLineSpacing(dp(3).toFloat(), 1.18f)
+             includeFontPadding = false
+             setPadding(0, dp(3), 0, dp(7))
+             setTextIsSelectable(true)
+@@ -1376,7 +1405,7 @@
+                 text = line.text
+                 textSize = if (assistant) 17f else 15f
+                 setTextColor(if (assistant) assistantText else primaryText)
+-                typeface = if (assistant) Typeface.create("serif", Typeface.NORMAL) else Typeface.DEFAULT_BOLD
++                typeface = if (assistant) Typeface.create("sans-serif", Typeface.NORMAL) else Typeface.create("sans-serif", Typeface.BOLD)
+                 setLineSpacing(dp(3).toFloat(), 1.12f)
+                 setPadding(dp(14), dp(10), dp(14), dp(10))
+                 background = if (assistant) null else rounded(panel2, 18f)
+@@ -1431,8 +1460,8 @@
+                 if (pending.isNotEmpty()) {
+                     val burst = when { pending.length > 180 -> 10; pending.length > 90 -> 6; pending.length > 45 -> 3; pending.length > 18 -> 2; else -> 1 }
+                     repeat(minOf(burst, pending.length)) { rendered.append(pending[0]); pending.deleteCharAt(0) }
+-                    target.text = rendered.toString(); onUpdate(); delay(11L)
+-                } else if (completed) break else delay(14L)
++                    target.text = rendered.toString(); onUpdate(); delay(4L)
++                } else if (completed) break else delay(5L)
+             }
+         }
+         fun append(piece: String) { pending.append(piece) }
