@@ -1,0 +1,94 @@
+name: BUILD111 Release Emulator Gate
+
+on:
+  push:
+    branches: [ "offline-ai-build111" ]
+    paths:
+      - "offlineai111/build111-speed-final.patch"
+      - "offlineai111/prepare-build111-release.sh"
+      - "offlineai111/make-preview-release.py"
+      - "offlineai111/emulator-test-release.sh"
+      - ".github/workflows/build-offline-ai-111-release.yml"
+  workflow_dispatch:
+
+jobs:
+  release_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK 36
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Prepare and build exact BUILD111 release source
+        run: bash offlineai111/prepare-build111-release.sh
+
+      - name: Verify metadata and stage clean APK
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project111/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
+          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='111' versionName='1.2'" apk-badging.txt
+          cp project111/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk | tee apk-sha256.txt
+
+      - name: Build validation APK from same release source
+        run: |
+          rm -rf project111-preview
+          cp -a project111 project111-preview
+          python offlineai111/make-preview-release.py
+          (cd project111-preview && ./gradlew --no-daemon assembleDebug --stacktrace)
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Run final BUILD111 emulator gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash offlineai111/emulator-test-release.sh
+
+      - name: Upload release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build111-release-emulator-evidence
+          path: |
+            emulator-status.txt
+            emulator-clean-launch.png
+            emulator-menu-dark.png
+            emulator-menu-light.png
+            emulator-font-typing.png
+            before.xml
+            after.xml
+            menu-dark.xml
+            menu-light.xml
+            typing-scroll-log.txt
+            clean-crash.txt
+            preview-crash.txt
+            apk-badging.txt
+            apk-sha256.txt
+          if-no-files-found: warn
+
+      - name: Upload clean APK only after release gate passes
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-build111-FINAL-EMULATOR-PASSED-apk
+          path: Internetsiz-Yapay-Zeka-1.2-build111-FINAL-EMULATOR-PASSED.apk
+          if-no-files-found: error
