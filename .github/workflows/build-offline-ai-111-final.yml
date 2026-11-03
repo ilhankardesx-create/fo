@@ -51,7 +51,7 @@ jobs:
           patch -d project111 -p1 < offlineai109/build109-ui.patch
           patch -d project111 -p1 < offlineai110/build110-fixes.patch
           patch -d project111 -p1 < offlineai111/build111-ui.patch
-          echo "d3cfd55e6f08722b3ba3fbaac832ab687356b458f90e4b57408966f0c98dfde3  project111/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "565e8ed4e53bab909d7331f700840ffe6d6d4fc353a5e9642b1556199558327f  project111/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
           echo "77ad9f829175b75babc79b47e5e469b68930a8491d1637c878c91e7aa7a283e2  project111/app/build.gradle.kts" | sha256sum -c -
           grep -q 'versionCode = 111' project111/app/build.gradle.kts
           grep -q 'private fun showThemedPopup' "$FILE"
@@ -59,7 +59,7 @@ jobs:
           ! grep -q 'Typeface.create("serif"' "$FILE"
           grep -q 'Typeface.create("sans-serif", Typeface.NORMAL)' "$FILE"
           grep -q 'Typeface.create("sans-serif", Typeface.BOLD)' "$FILE"
-          grep -q 'delay(4L)' "$FILE"
+          grep -q 'target.append(chunk); onUpdate(); delay(4L)' "$FILE"
           grep -q 'else delay(5L)' "$FILE"
 
       - name: Build clean BUILD111 APK
