@@ -65,6 +65,59 @@ jobs:
           grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='108' versionName='1.2'" apk-badging.txt
           sha256sum project108/app/build/outputs/apk/debug/app-debug.apk | tee apk-sha256.txt
 
+      - name: Create emulator launch-test script
+        run: |
+          cat > emulator-test.sh <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="project108/app/build/outputs/apk/debug/app-debug.apk"
+          APP_PACKAGE="com.internetsizyapayzeka.app2026"
+
+          echo "Installing APK: $APK"
+          test -f "$APK"
+          adb install -r "$APK"
+          adb shell pm list packages | grep -F "$APP_PACKAGE"
+
+          adb logcat -c
+          adb shell am force-stop "$APP_PACKAGE" || true
+          adb shell monkey -p "$APP_PACKAGE" -c android.intent.category.LAUNCHER 1
+          sleep 10
+
+          PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+          echo "APP_PID=$PID" | tee emulator-status.txt
+
+          adb shell dumpsys activity activities > emulator-activities.txt || true
+          adb exec-out screencap -p > emulator-launch.png || true
+          adb logcat -d > emulator-logcat.txt || true
+          adb logcat -d AndroidRuntime:E '*:S' > androidruntime-errors.txt || true
+
+          if [ -z "$PID" ]; then
+            echo "ERROR: App process is not alive after launch" | tee -a emulator-status.txt
+            cat androidruntime-errors.txt || true
+            exit 1
+          fi
+
+          if grep -q "FATAL EXCEPTION" androidruntime-errors.txt; then
+            echo "ERROR: AndroidRuntime fatal exception detected" | tee -a emulator-status.txt
+            cat androidruntime-errors.txt
+            exit 1
+          fi
+
+          if grep -q "Process: $APP_PACKAGE" androidruntime-errors.txt; then
+            echo "ERROR: AndroidRuntime process crash detected" | tee -a emulator-status.txt
+            cat androidruntime-errors.txt
+            exit 1
+          fi
+
+          if ! grep -q "$APP_PACKAGE" emulator-activities.txt; then
+            echo "ERROR: App package is not present in activity state after launch" | tee -a emulator-status.txt
+            exit 1
+          fi
+
+          echo "PASS: App installed, launched and stayed alive without AndroidRuntime fatal crash" | tee -a emulator-status.txt
+          EOF
+          chmod +x emulator-test.sh
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -81,37 +134,7 @@ jobs:
           profile: pixel_7_pro
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
-          script: |
-            set -euxo pipefail
-            APK="project108/app/build/outputs/apk/debug/app-debug.apk"
-            adb install -r "$APK"
-            adb shell pm list packages | grep "$APP_PACKAGE"
-            adb logcat -c
-            adb shell am force-stop "$APP_PACKAGE" || true
-            adb shell monkey -p "$APP_PACKAGE" -c android.intent.category.LAUNCHER 1
-            sleep 10
-            PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
-            echo "APP_PID=$PID" | tee emulator-status.txt
-            if [ -z "$PID" ]; then
-              echo "ERROR: App process is not alive after launch" | tee -a emulator-status.txt
-              adb logcat -d > emulator-logcat.txt
-              exit 1
-            fi
-            adb shell dumpsys activity activities > emulator-activities.txt
-            adb exec-out screencap -p > emulator-launch.png
-            adb logcat -d > emulator-logcat.txt
-            adb logcat -d AndroidRuntime:E '*:S' > androidruntime-errors.txt || true
-            if grep -q "FATAL EXCEPTION" androidruntime-errors.txt; then
-              echo "ERROR: AndroidRuntime fatal exception detected" | tee -a emulator-status.txt
-              cat androidruntime-errors.txt
-              exit 1
-            fi
-            if grep -q "Process: $APP_PACKAGE" androidruntime-errors.txt; then
-              echo "ERROR: AndroidRuntime process crash detected" | tee -a emulator-status.txt
-              cat androidruntime-errors.txt
-              exit 1
-            fi
-            echo "PASS: App installed, launched and stayed alive without AndroidRuntime fatal crash" | tee -a emulator-status.txt
+          script: bash emulator-test.sh
 
       - name: Upload emulator evidence
         if: always()
