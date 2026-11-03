@@ -46,6 +46,14 @@ jobs:
           unzip -q offlineai108-source.zip -d project108
           chmod +x project108/gradlew
 
+      - name: Apply Kotlin compile fixes
+        run: |
+          FILE="project108/app/src/main/java/com/offlineai/app/MainActivity.kt"
+          sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' "$FILE"
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' "$FILE"
+          ! grep -q 'ScrollView.LayoutParams' "$FILE"
+          ! grep -q 'isTextSelectable = true' "$FILE"
+
       - name: Build debug APK
         working-directory: project108
         run: ./gradlew --no-daemon assembleDebug --stacktrace
