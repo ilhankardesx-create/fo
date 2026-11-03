@@ -144,7 +144,8 @@ jobs:
           grep -q 'Bir şey sorun' chat-ui.xml
           adb exec-out screencap -p > emulator-chat-before-scroll.png
 
-          adb shell input swipe 720 2050 720 650 700
+          # Preview starts at the bottom; swipe DOWN to reveal older messages above.
+          adb shell input swipe 720 650 720 2050 700
           sleep 2
           adb exec-out screencap -p > emulator-chat-after-scroll.png
           if cmp -s emulator-chat-before-scroll.png emulator-chat-after-scroll.png; then
