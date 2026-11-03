@@ -18,21 +18,28 @@
          val popupBg = if (isDarkTheme) Color.rgb(35, 36, 41) else Color.rgb(252, 252, 253)
          val popupText = if (isDarkTheme) Color.rgb(248, 248, 250) else Color.rgb(25, 27, 31)
          val popup = PopupWindow(this).apply {
-@@ -466,7 +466,12 @@
+@@ -466,7 +466,19 @@
              body.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
          }
          popup.contentView = body
 -        popup.showAsDropDown(anchor, 0, dp(4))
 +        if (openAbove) {
-+            val popupHeight = dp(items.size * 50 + 12)
-+            popup.showAsDropDown(anchor, 0, -(anchor.height + popupHeight + dp(4)))
++            body.measure(
++                View.MeasureSpec.makeMeasureSpec(dp(232), View.MeasureSpec.EXACTLY),
++                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
++            )
++            val location = IntArray(2)
++            anchor.getLocationInWindow(location)
++            val popupX = location[0]
++            val popupY = (location[1] - body.measuredHeight - dp(6)).coerceAtLeast(dp(8))
++            popup.showAtLocation(window.decorView, Gravity.TOP or Gravity.START, popupX, popupY)
 +        } else {
 +            popup.showAsDropDown(anchor, 0, dp(4))
 +        }
      }
  
      private fun showModelsDialog() {
-@@ -777,6 +782,11 @@
+@@ -777,6 +789,11 @@
      }
  
      private fun openImagePicker() {
@@ -44,7 +51,7 @@
          val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }
          startActivityForResult(intent, REQUEST_IMAGE)
      }
-@@ -962,7 +972,8 @@
+@@ -962,7 +979,8 @@
          }
          val image = pendingImage
          if (image != null && !prefs().getBoolean(KEY_MODEL_VISION, false)) {
