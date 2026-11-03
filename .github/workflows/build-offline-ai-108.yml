@@ -55,6 +55,20 @@ jobs:
           ! grep -q 'ScrollView.LayoutParams' "$FILE"
           ! grep -q 'isTextSelectable = true' "$FILE"
 
+      - name: Apply startup crash fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('project108/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s = p.read_text()
+          old = '''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
+          new = '''        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
+          if old not in s:
+              raise SystemExit('startup block not found exactly once')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          nl -ba project108/app/src/main/java/com/offlineai/app/MainActivity.kt | sed -n '175,192p'
+
       - name: Build debug APK
         working-directory: project108
         run: ./gradlew --no-daemon assembleDebug --stacktrace
