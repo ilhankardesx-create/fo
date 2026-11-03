@@ -60,17 +60,20 @@ grep -q 'ilhankardesx@gmail.com' about.xml
 grep -q 'KULLANIM KILAVUZU' about.xml
 adb exec-out screencap -p > emulator-about.png
 
-echo '=== LONG STREAM AUTO-SCROLL STABILITY ===' | tee -a emulator-status.txt
+echo '=== 20 SECOND LONG STREAM AUTO-SCROLL STABILITY ===' | tee -a emulator-status.txt
 adb logcat -c
 adb shell am force-stop "$APP_PACKAGE" || true
 adb shell am start -n "$APP_PACKAGE/$ACTIVITY" --ez __scroll_stream_test true
-sleep 1
-adb exec-out screencap -p > emulator-stream-start.png
-sleep 12
+sleep 2
 STREAM_PID="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
 test -n "$STREAM_PID"
+adb exec-out screencap -p > emulator-stream-start.png
+sleep 10
+adb exec-out screencap -p > emulator-stream-mid.png
+sleep 10
+STREAM_PID_AFTER="$(adb shell pidof "$APP_PACKAGE" | tr -d '\r' || true)"
+test -n "$STREAM_PID_AFTER"
 adb logcat -d -s BUILD110_SCROLL:D '*:S' > scroll-log.txt || true
-grep -q 'DONE y=' scroll-log.txt
 python - <<'PY'
 import re, sys
 vals=[]
@@ -78,16 +81,23 @@ for line in open('scroll-log.txt', encoding='utf-8', errors='ignore'):
     m=re.search(r'old=(\d+) y=(\d+)', line)
     if m:
         vals.append(int(m.group(2)))
-if len(vals) < 5:
-    print('Not enough scroll samples:', len(vals)); sys.exit(1)
-drops=[(a,b) for a,b in zip(vals, vals[1:]) if b < a - 4]
-print('scroll_samples=', len(vals), 'first=', vals[0], 'last=', vals[-1], 'drops=', drops[:10])
-if drops or vals[-1] <= vals[0]:
+print('scroll_samples=', len(vals), 'first=', vals[:5], 'last=', vals[-5:] if vals else [])
+if len(vals) < 15:
+    print('FAIL: not enough scroll samples'); sys.exit(1)
+drops=[(i,a,b) for i,(a,b) in enumerate(zip(vals, vals[1:])) if b < a - 4]
+print('backward_drops=', drops[:10])
+if drops:
     sys.exit(1)
+if vals[-1] <= vals[0] + 300:
+    print('FAIL: scroll did not advance enough'); sys.exit(1)
 PY
 adb exec-out screencap -p > emulator-stream-finish.png
+if cmp -s emulator-stream-start.png emulator-stream-finish.png; then
+  echo 'FAIL: streaming screen did not change' | tee -a emulator-status.txt
+  exit 1
+fi
 adb logcat -d AndroidRuntime:E '*:S' > preview-androidruntime-errors.txt || true
 ! grep -q 'FATAL EXCEPTION' preview-androidruntime-errors.txt
 ! grep -q "Process: $APP_PACKAGE" preview-androidruntime-errors.txt
 
-echo 'PASS: BUILD110 clean launch + theme preservation + About content + monotonic long-answer auto-scroll + no AndroidRuntime crash' | tee -a emulator-status.txt
+echo 'PASS: BUILD110 clean launch + theme/chat/draft preserved + About content + 20s monotonic long-answer auto-scroll + no AndroidRuntime crash' | tee -a emulator-status.txt
