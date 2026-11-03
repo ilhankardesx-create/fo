@@ -1,0 +1,67 @@
+--- a/app/src/main/java/com/offlineai/app/MainActivity.kt
++++ b/app/src/main/java/com/offlineai/app/MainActivity.kt
+@@ -425,7 +425,7 @@
+     }
+ 
+     private fun showAttachmentMenu(anchor: View) {
+-        showThemedPopup(anchor, listOf("Fotoğraflar", "Dosyalar")) { selected ->
++        showThemedPopup(anchor, listOf("Fotoğraflar", "Dosyalar"), openAbove = true) { selected ->
+             when (selected) {
+                 "Fotoğraflar" -> openImagePicker()
+                 "Dosyalar" -> openFilePicker()
+@@ -433,7 +433,7 @@
+         }
+     }
+ 
+-    private fun showThemedPopup(anchor: View, items: List<String>, onSelected: (String) -> Unit) {
++    private fun showThemedPopup(anchor: View, items: List<String>, openAbove: Boolean = false, onSelected: (String) -> Unit) {
+         val popupBg = if (isDarkTheme) Color.rgb(35, 36, 41) else Color.rgb(252, 252, 253)
+         val popupText = if (isDarkTheme) Color.rgb(248, 248, 250) else Color.rgb(25, 27, 31)
+         val popup = PopupWindow(this).apply {
+@@ -466,7 +466,12 @@
+             body.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+         }
+         popup.contentView = body
+-        popup.showAsDropDown(anchor, 0, dp(4))
++        if (openAbove) {
++            val popupHeight = dp(items.size * 50 + 12)
++            popup.showAsDropDown(anchor, 0, -(anchor.height + popupHeight + dp(4)))
++        } else {
++            popup.showAsDropDown(anchor, 0, dp(4))
++        }
+     }
+ 
+     private fun showModelsDialog() {
+@@ -777,6 +782,11 @@
+     }
+ 
+     private fun openImagePicker() {
++        if (engine.isLoaded && !prefs().getBoolean(KEY_MODEL_VISION, false)) {
++            val modelName = prefs().getString(KEY_MODEL_NAME, null) ?: "Seçili model"
++            Toast.makeText(this, "$modelName fotoğraf analizini desteklemiyor. Fotoğraf destekleyen bir model seç.", Toast.LENGTH_LONG).show()
++            return
++        }
+         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }
+         startActivityForResult(intent, REQUEST_IMAGE)
+     }
+@@ -962,7 +972,8 @@
+         }
+         val image = pendingImage
+         if (image != null && !prefs().getBoolean(KEY_MODEL_VISION, false)) {
+-            Toast.makeText(this, "Gemma 3 1B görsel analiz etmez. E2B, E4B veya 12B seç.", Toast.LENGTH_LONG).show()
++            val modelName = prefs().getString(KEY_MODEL_NAME, null) ?: "Seçili model"
++            Toast.makeText(this, "$modelName fotoğraf analizini desteklemiyor. Fotoğraf destekleyen bir model seç.", Toast.LENGTH_LONG).show()
+             return
+         }
+         val docText = pendingDocumentText
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -10,7 +10,7 @@
+         applicationId = "com.internetsizyapayzeka.app2026"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 111
++        versionCode = 112
+         versionName = "1.2"
+     }
+     buildTypes {
