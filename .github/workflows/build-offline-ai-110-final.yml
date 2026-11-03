@@ -1,0 +1,119 @@
+name: BUILD110 Final Emulator Gate
+
+on:
+  push:
+    branches: [ "offline-ai-build110" ]
+    paths:
+      - ".github/workflows/build-offline-ai-110-final.yml"
+  workflow_dispatch:
+
+jobs:
+  final_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      APP_PACKAGE: com.internetsizyapayzeka.app2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install SDK 36
+        run: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Reconstruct BUILD110 source
+        run: |
+          cat offlineai108/chunk_00.b64 offlineai108/chunk_01.b64 offlineai108/chunk_02.b64 offlineai108/chunk_03.b64 offlineai108/chunk_04.b64 | base64 -d > offlineai108-source.zip
+          echo "cd9564a71b2b6e8e119d2851788ecd27d7a173cd246b7749169bd1c9a0ac0e88  offlineai108-source.zip" | sha256sum -c -
+          rm -rf project110 && mkdir project110
+          unzip -q offlineai108-source.zip -d project110
+          chmod +x project110/gradlew
+          FILE="project110/app/src/main/java/com/offlineai/app/MainActivity.kt"
+          sed -i 's/ScrollView\.LayoutParams(/FrameLayout.LayoutParams(/g' "$FILE"
+          sed -i 's/isTextSelectable = true/setTextIsSelectable(true)/g' "$FILE"
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('project110/app/src/main/java/com/offlineai/app/MainActivity.kt')
+          s=p.read_text()
+          old='''        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        restoreModel()\n'''
+          new='''        PDFBoxResourceLoader.init(applicationContext)\n        engine = LocalModelEngine(this)\n        registerDownloadReceiver()\n        buildUi()\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n            val appearance = if (isDarkTheme) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS\n            window.insetsController?.setSystemBarsAppearance(appearance, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)\n        }\n        restoreModel()\n'''
+          if old not in s: raise SystemExit('108 startup block missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          patch -d project110 -p1 < offlineai109/build109-ui.patch
+          patch -d project110 -p1 < offlineai110/build110-fixes.patch
+          echo "48b8e03a66b609ed3119e7a9d73fd665d2ed4245dea5612fe8cbdfcb73a40dfc  project110/app/src/main/java/com/offlineai/app/MainActivity.kt" | sha256sum -c -
+          echo "8a24afa5d29f6cc097ca415c16206b02f14eb07f2e9af4dbccf2a8168d001e74  project110/app/build.gradle.kts" | sha256sum -c -
+
+      - name: Build clean APK
+        working-directory: project110
+        run: ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and name APK
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging project110/app/build/outputs/apk/debug/app-debug.apk | tee apk-badging.txt | head -n 8
+          grep -q "package: name='com.internetsizyapayzeka.app2026' versionCode='110' versionName='1.2'" apk-badging.txt
+          cp project110/app/build/outputs/apk/debug/app-debug.apk Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk
+          sha256sum Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk | tee apk-sha256.txt
+
+      - name: Build validation APK
+        run: |
+          rm -rf project110-preview
+          cp -a project110 project110-preview
+          python offlineai110/make-preview.py
+          cd project110-preview
+          ./gradlew --no-daemon assembleDebug --stacktrace
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Emulator gate
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_7_pro
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: bash offlineai110/emulator-test-final.sh
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build110-final-emulator-evidence
+          path: |
+            emulator-status.txt
+            emulator-normal-launch.png
+            emulator-theme-before.png
+            emulator-theme-after.png
+            emulator-about.png
+            emulator-stream-start.png
+            emulator-stream-finish.png
+            theme-before.xml
+            theme-after.xml
+            theme-prefs.xml
+            about.xml
+            scroll-log.txt
+            clean-androidruntime-errors.txt
+            preview-androidruntime-errors.txt
+            apk-badging.txt
+            apk-sha256.txt
+          if-no-files-found: warn
+
+      - name: Upload clean APK after gate
+        uses: actions/upload-artifact@v4
+        with:
+          name: Internetsiz-Yapay-Zeka-build110-EMULATOR-PASSED-apk
+          path: Internetsiz-Yapay-Zeka-1.2-build110-EMULATOR-PASSED.apk
+          if-no-files-found: error
