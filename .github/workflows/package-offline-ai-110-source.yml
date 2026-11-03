@@ -1,0 +1,27 @@
+name: Package BUILD110 Master Source
+
+on:
+  push:
+    branches: [ "offline-ai-build110" ]
+    paths:
+      - ".github/workflows/package-offline-ai-110-source.yml"
+      - "offlineai110/package-master-source.sh"
+  workflow_dispatch:
+
+jobs:
+  package_source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct canonical BUILD110 master
+        run: |
+          chmod +x offlineai110/package-master-source.sh
+          bash offlineai110/package-master-source.sh
+      - name: Upload BUILD110 master source
+        uses: actions/upload-artifact@v4
+        with:
+          name: INTERNETSIZ-YAPAY-ZEKA_BUILD110_KOTLIN_MASTER_SOURCE
+          path: |
+            INTERNETSIZ-YAPAY-ZEKA_BUILD110_KOTLIN_MASTER_SOURCE.zip
+            build110-master-sha256.txt
+          if-no-files-found: error
