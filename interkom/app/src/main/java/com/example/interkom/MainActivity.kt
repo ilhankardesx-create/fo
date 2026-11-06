@@ -47,16 +47,14 @@ class MainActivity : ComponentActivity() {
         val intent = pendingIntent
         pendingIntent = null
         val mic = permitted(Manifest.permission.RECORD_AUDIO)
-        val bluetooth = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-            permitted(Manifest.permission.BLUETOOTH_CONNECT)
-        if (intent != null && mic && bluetooth) {
+        if (intent != null && mic) {
             ContextCompat.startForegroundService(this, intent)
         } else {
-            SessionState.error.value = "Mikrofon/Bluetooth izni gerekli."
+            SessionState.error.value = "Mikrofon izni gerekli."
         }
     }
 
-    private fun join(create: Boolean, backend: String, name: String, code: String) {
+    private fun join(create: Boolean, name: String, code: String) {
         if (name.trim().length !in 1..24) {
             SessionState.error.value = "1–24 karakterlik takma ad yaz."
             return
@@ -65,27 +63,18 @@ class MainActivity : ComponentActivity() {
             SessionState.error.value = "6 haneli oda kodu yaz."
             return
         }
-        if (!backend.trim().startsWith("https://")) {
-            SessionState.error.value = "HTTPS oda sunucusu gerekli."
-            return
-        }
         SessionState.error.value = ""
         getSharedPreferences("interkom", MODE_PRIVATE).edit()
-            .putString("backend", backend.trim()).putString("name", name.trim()).apply()
+            .putString("name", name.trim()).apply()
 
         val service = Intent(this, InterkomService::class.java).apply {
             action = InterkomService.JOIN
-            putExtra("backend", backend.trim())
             putExtra("nickname", name.trim())
             putExtra("code", code)
             putExtra("create", create)
         }
         val needs = mutableListOf<String>()
         if (!permitted(Manifest.permission.RECORD_AUDIO)) needs.add(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !permitted(Manifest.permission.BLUETOOTH_CONNECT)) {
-            needs.add(Manifest.permission.BLUETOOTH_CONNECT)
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             !permitted(Manifest.permission.POST_NOTIFICATIONS)) {
             needs.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -107,7 +96,6 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
                     InterkomScreen(
-                        prefs.getString("backend", "https://").orEmpty(),
                         prefs.getString("name", "").orEmpty(),
                         ::join,
                         { act(InterkomService.MUTE) },
@@ -121,13 +109,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun InterkomScreen(
-    firstBackend: String,
     firstName: String,
-    onJoin: (Boolean, String, String, String) -> Unit,
+    onJoin: (Boolean, String, String) -> Unit,
     onMute: () -> Unit,
     onLeave: () -> Unit
 ) {
-    var backend by remember { mutableStateOf(firstBackend) }
     var name by remember { mutableStateOf(firstName) }
     var codeInput by remember { mutableStateOf("") }
     val live by SessionState.live.collectAsState()
@@ -166,14 +152,8 @@ private fun InterkomScreen(
                 label = { Text("Takma ad") }, singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = backend, onValueChange = { backend = it },
-                label = { Text("Oda sunucusu (HTTPS)") },
-                supportingText = { Text("Bu alan ilk teknik test sürümünde gereklidir.") },
-                singleLine = true, modifier = Modifier.fillMaxWidth()
-            )
             Button(
-                onClick = { onJoin(true, backend, name, "") },
+                onClick = { onJoin(true, name, "") },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Yeni oda oluştur") }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -184,17 +164,17 @@ private fun InterkomScreen(
                     modifier = Modifier.weight(1f), singleLine = true
                 )
                 OutlinedButton(
-                    onClick = { onJoin(false, backend, name, codeInput) },
+                    onClick = { onJoin(false, name, codeInput) },
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Text("Katıl") }
             }
-            Text("Bluetooth mikrofonlu kulaklığını telefona bağla. Uygulama uygun ses çıkışını seçmeye çalışır.")
+            Text("Kulaklık gerekmiyor: telefonun mikrofonu ve hoparlörüyle konuşabilirsin. Bluetooth kulaklık isteğe bağlı.")
             if (status != "Bağlı değil") Text("Durum: " + status)
         }
         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(12.dp))
         Text(
-            "Test sürümü: sunucu kurulmadan oda oluşturulamaz. Sürüş sırasında telefona dokunma.",
+            "LiveKit test sunucusu kullanılıyor. İlk denemede iki telefonu yan yana tutma; yankı oluşabilir. Sürüş sırasında telefona dokunma.",
             style = MaterialTheme.typography.bodySmall
         )
     }
