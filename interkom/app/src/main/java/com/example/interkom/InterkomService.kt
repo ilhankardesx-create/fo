@@ -46,7 +46,6 @@ class InterkomService : Service() {
                 sessionJob?.cancel()
                 room?.disconnect()
                 room = null
-                val backend = intent.getStringExtra("backend").orEmpty()
                 val nickname = intent.getStringExtra("nickname").orEmpty()
                 val code = intent.getStringExtra("code").orEmpty()
                 val create = intent.getBooleanExtra("create", false)
@@ -54,7 +53,7 @@ class InterkomService : Service() {
                     SessionState.error.value = ""
                     SessionState.status.value = "Bağlanıyor…"
                     try {
-                        val ticket = BackendApi.getTicket(backend, create, nickname, code)
+                        val ticket = BackendApi.getTicket(create, nickname, code)
                         val joined = LiveKit.create(applicationContext)
                         room = joined
                         joined.connect(ticket.serverUrl, ticket.token)
