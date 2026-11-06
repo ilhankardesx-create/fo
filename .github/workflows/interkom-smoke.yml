@@ -1,0 +1,44 @@
+name: Interkom Launch Smoke Test
+on:
+  push:
+    branches: [interkom-v01-first-apk]
+    paths: [.github/workflows/interkom-smoke.yml]
+  workflow_dispatch:
+
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download tested APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: interkom-build1-debug-apk
+          path: apk
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 42299476569
+      - name: Enable emulator acceleration
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Install and launch Interkom
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install apk/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n com.example.interkom/.MainActivity
+            sleep 10
+            adb shell pidof com.example.interkom
+            adb shell input tap 300 600
+            sleep 3
+            adb shell pidof com.example.interkom
+            adb logcat -d -s AndroidRuntime:E > /tmp/interkom-crash.log
+            ! grep -q "FATAL EXCEPTION" /tmp/interkom-crash.log
