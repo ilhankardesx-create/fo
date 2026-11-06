@@ -1,7 +1,7 @@
 name: Interkom Launch Smoke Test
 on:
   push:
-    branches: [interkom-v01-first-apk]
+    branches: [interkom-v01-first-apk, interkom-v02-livekit-cloud]
     paths: [.github/workflows/interkom-smoke.yml]
   workflow_dispatch:
 
@@ -16,10 +16,10 @@ jobs:
       - name: Download tested APK artifact
         uses: actions/download-artifact@v4
         with:
-          name: interkom-build1-debug-apk
+          name: interkom-build2-livekit-debug-apk
           path: apk
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: 42299476569
+          run-id: 0
       - name: Enable emulator acceleration
         run: |
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
