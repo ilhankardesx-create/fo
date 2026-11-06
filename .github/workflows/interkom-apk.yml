@@ -2,7 +2,7 @@ name: Interkom APK prototype
 on:
   workflow_dispatch:
   push:
-    branches: [interkom-v01-first-apk]
+    branches: [interkom-v01-first-apk, interkom-v02-livekit-cloud]
 
 jobs:
   apk:
@@ -30,5 +30,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: interkom-build1-debug-apk
+          name: interkom-build2-livekit-debug-apk
           path: interkom/app/build/outputs/apk/debug/app-debug.apk
