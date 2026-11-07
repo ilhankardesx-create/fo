@@ -55,7 +55,7 @@ internal object FlankSupabase {
 
     suspend fun signInGoogle() {
         // Opens the browser and returns via flankinterkom://auth-callback (PKCE).
-        client.auth.signInWith(Google)
+        client.auth.signInWith(Google, redirectUrl = "flankinterkom://auth-callback")
     }
 
     suspend fun loadProfile(): FlankProfile? {
