@@ -11,6 +11,24 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,11 +74,13 @@ import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-private val FlankBg = Color(0xFF10151F)
-private val FlankPanel = Color(0xFF202B3B)
-private val FlankBlue = Color(0xFF42C6F5)
-private val FlankText = Color(0xFFF9FAFC)
-private val FlankMuted = Color(0xFFB5C1D2)
+private val FlankBg = Color(0xFF0A0D12)
+private val FlankPanel = Color(0xFF1A2025)
+private val FlankOrange = Color(0xFFFF841C)
+private val FlankOrangeBright = Color(0xFFFFA13E)
+private val FlankTeal = Color(0xFF28D8D0)
+private val FlankText = Color(0xFFF7F8FA)
+private val FlankMuted = Color(0xFFA9B1BA)
 
 private enum class Page { LOADING, WELCOME, PROFILE, HOME }
 
@@ -240,21 +260,194 @@ class MainActivity : ComponentActivity() {
         startService(Intent(this, InterkomService::class.java).setAction(action))
 }
 
+
 @Composable
 private fun LoadingScreen(message: String, retry: () -> Unit) {
     Column(
-        Modifier.fillMaxSize().padding(26.dp),
+        Modifier.fillMaxSize().background(FlankBg).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        CircularProgressIndicator(color = FlankBlue)
-        Spacer(Modifier.height(22.dp))
-        Text(if (message.isBlank()) "Flank Interkom hazırlanıyor…" else message,
-            color = FlankText, textAlign = TextAlign.Center)
+        CircularProgressIndicator(color = FlankOrange)
+        Spacer(Modifier.height(20.dp))
+        Text(
+            if (message.isBlank()) "Flank Interkom hazırlanıyor…" else message,
+            color = FlankText, textAlign = TextAlign.Center
+        )
         if (message.isNotBlank()) {
             Spacer(Modifier.height(16.dp))
-            Button(onClick = retry) { Text("Tekrar dene") }
+            OutlinedButton(onClick = retry, border = BorderStroke(1.dp, FlankOrange)) {
+                Text("Tekrar dene", color = FlankOrange)
+            }
         }
+    }
+}
+
+@Composable
+private fun RadioWaveMark(modifier: Modifier = Modifier) {
+    Canvas(modifier.size(37.dp)) {
+        val step = size.width / 7f
+        val center = size.height / 2f
+        val lengths = listOf(.33f, .67f, 1f, .62f, .42f)
+        lengths.forEachIndexed { index, factor ->
+            val x = step * (index + 1.3f)
+            val half = size.height * factor * .43f
+            drawLine(
+                color = if (index == 2) FlankOrange else FlankTeal,
+                start = Offset(x, center - half),
+                end = Offset(x, center + half),
+                strokeWidth = step * .75f,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+private fun FlankHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            RadioWaveMark()
+            Box(Modifier.width(2.dp).height(42.dp).background(FlankOrange))
+            Column {
+                Text(
+                    "FLANK",
+                    color = FlankText,
+                    fontWeight = FontWeight.Black,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 27.sp,
+                    letterSpacing = 1.sp,
+                    lineHeight = 29.sp
+                )
+                Text(
+                    "INTERKOM",
+                    color = FlankOrange,
+                    fontWeight = FontWeight.Black,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 21.sp,
+                    letterSpacing = 1.2.sp,
+                    lineHeight = 23.sp
+                )
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(2.dp).background(
+                Brush.horizontalGradient(
+                    listOf(FlankOrange, FlankOrange.copy(alpha = .55f), Color.Transparent)
+                )
+            )
+        )
+    }
+}
+
+/** Background decoration is paint-only: no network image, no large file, no interaction. */
+@Composable
+private fun OrangeRouteDecoration(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(-w * .05f, h * .90f)
+            cubicTo(w * .16f, h * .62f, w * .36f, h * .99f, w * .54f, h * .66f)
+            cubicTo(w * .68f, h * .37f, w * .80f, h * .78f, w * 1.07f, h * .34f)
+        }
+        drawPath(
+            path, color = FlankOrange.copy(alpha = .27f),
+            style = Stroke(width = 15.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawPath(
+            path, color = FlankOrange.copy(alpha = .72f),
+            style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawCircle(
+            color = FlankOrange.copy(alpha = .22f),
+            radius = 70.dp.toPx(),
+            center = Offset(w * .85f, h * .94f)
+        )
+    }
+}
+
+@Composable
+private fun FlankBackdrop(content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                listOf(Color(0xFF101419), FlankBg, Color(0xFF151A21))
+            )
+        )
+    ) {
+        OrangeRouteDecoration(
+            Modifier.fillMaxWidth().height(160.dp).align(Alignment.BottomCenter)
+        )
+        content()
+    }
+}
+
+@Composable
+private fun SolidOrangeButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    leading: String = "✚",
+    enabled: Boolean = true
+) {
+    val shape = RoundedCornerShape(23.dp)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .alpha(if (enabled) 1f else .52f)
+            .shadow(5.dp, shape)
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(FlankOrangeBright, FlankOrange, Color(0xFFFF7205))
+                )
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text(leading, color = Color(0xFF19140F), fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(13.dp))
+        Box(Modifier.width(1.dp).height(29.dp).background(Color(0xFF7D3E0C)))
+        Spacer(Modifier.width(13.dp))
+        Text(
+            text,
+            color = Color(0xFF18110A),
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 18.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun TealOutlineButton(
+    text: String, onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(23.dp)
+    Row(
+        modifier.fillMaxWidth()
+            .height(62.dp)
+            .alpha(if (enabled) 1f else .47f)
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(Color(0xFF152A2A), Color(0xFF122124))))
+            .border(BorderStroke(1.5.dp, FlankTeal), shape)
+            .clickable(enabled = enabled, onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("➜", color = FlankTeal, fontWeight = FontWeight.Black, fontSize = 23.sp)
+        Spacer(Modifier.width(14.dp))
+        Text(text, color = FlankText, fontWeight = FontWeight.Bold, fontSize = 18.sp)
     }
 }
 
@@ -262,50 +455,99 @@ private fun LoadingScreen(message: String, retry: () -> Unit) {
 private fun WelcomeScreen(
     busy: Boolean, message: String, google: () -> Unit, guest: () -> Unit
 ) {
-    Column(
-        Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 30.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(Modifier.weight(1.3f))
-        Box(
-            Modifier.size(94.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xFF183047)),
-            contentAlignment = Alignment.Center
-        ) { Text("◉", color = FlankBlue, style = MaterialTheme.typography.displayLarge) }
-        Spacer(Modifier.height(20.dp))
-        Text("FLANK", style = MaterialTheme.typography.headlineLarge,
-            color = FlankText, fontWeight = FontWeight.Black)
-        Text("INTERKOM", color = FlankBlue, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(16.dp))
-        Text("Arkadaşlarınla anında bağlan, birlikte konuş.",
-            color = FlankMuted, textAlign = TextAlign.Center)
-        Spacer(Modifier.weight(1.6f))
-        Button(
-            onClick = google, enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = FlankBg),
-            shape = RoundedCornerShape(15.dp)
-        ) { Text("G   Google ile devam et", fontWeight = FontWeight.SemiBold) }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = guest, enabled = !busy, modifier = Modifier.fillMaxWidth().height(56.dp),
-            border = BorderStroke(1.dp, Color(0xFF526278)), shape = RoundedCornerShape(15.dp)
-        ) { Text("Misafir olarak devam et", color = FlankText) }
-        if (busy) { Spacer(Modifier.height(10.dp)); CircularProgressIndicator(color = FlankBlue) }
-        if (message.isNotBlank()) ErrorText(message)
-        Spacer(Modifier.height(18.dp))
-        Text("Devam ederek kullanım koşullarını kabul edersin.",
-            style = MaterialTheme.typography.bodySmall, color = FlankMuted,
-            textAlign = TextAlign.Center)
+    FlankBackdrop {
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 25.dp, vertical = 25.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.weight(.7f))
+            Box(
+                Modifier.size(108.dp).clip(RoundedCornerShape(29.dp))
+                    .background(Color(0xFF1D2328))
+                    .border(1.dp, FlankOrange.copy(alpha = .85f), RoundedCornerShape(29.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                RadioWaveMark(Modifier.size(66.dp))
+            }
+            Spacer(Modifier.height(22.dp))
+            Text(
+                "FLANK",
+                color = FlankText,
+                fontStyle = FontStyle.Italic,
+                fontWeight = FontWeight.Black,
+                fontSize = 40.sp
+            )
+            Text(
+                "INTERKOM",
+                color = FlankOrange,
+                fontStyle = FontStyle.Italic,
+                fontWeight = FontWeight.Black,
+                fontSize = 24.sp,
+                letterSpacing = 2.sp
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Arkadaşlarınla anında bağlan,\nbirlikte konuş.",
+                color = FlankMuted,
+                textAlign = TextAlign.Center,
+                lineHeight = 23.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Button(
+                onClick = google,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().height(59.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = FlankText,
+                    contentColor = Color(0xFF181A1E)
+                ),
+                shape = RoundedCornerShape(19.dp)
+            ) {
+                Text("G", fontWeight = FontWeight.Bold, color = Color(0xFF4285F4), fontSize = 21.sp)
+                Spacer(Modifier.width(15.dp))
+                Text("Google ile devam et", fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(13.dp))
+            OutlinedButton(
+                onClick = guest, enabled = !busy,
+                modifier = Modifier.fillMaxWidth().height(59.dp),
+                border = BorderStroke(1.2.dp, FlankOrange),
+                shape = RoundedCornerShape(19.dp)
+            ) {
+                Text("Misafir olarak devam et", color = FlankText, fontWeight = FontWeight.Bold)
+            }
+            if (busy) {
+                Spacer(Modifier.height(12.dp))
+                CircularProgressIndicator(color = FlankOrange)
+            }
+            if (message.isNotBlank()) ErrorText(message)
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }
 
 @Composable
 private fun ProfileAvatar(url: Any?, large: Boolean = false) {
-    val d = if (large) 102.dp else 64.dp
-    Box(Modifier.size(d).clip(CircleShape).background(FlankPanel), contentAlignment = Alignment.Center) {
-        if (url == null) Text("◉", color = FlankBlue, style = MaterialTheme.typography.headlineLarge)
-        else AsyncImage(model = url, contentDescription = "Profil fotoğrafı",
-            modifier = Modifier.fillMaxSize().clip(CircleShape))
+    val diameter = if (large) 116.dp else 67.dp
+    // Circle + ContentScale.Crop: square, landscape and portrait photos are always circular.
+    Box(
+        Modifier.size(diameter)
+            .border(2.dp, FlankOrange, CircleShape)
+            .padding(3.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF303840)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (url == null) {
+            Text("●", color = FlankOrange, fontSize = 39.sp)
+        } else {
+            AsyncImage(
+                model = url,
+                contentDescription = "Profil fotoğrafı",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape)
+            )
+        }
     }
 }
 
@@ -319,45 +561,62 @@ private fun ProfileScreen(
     }
     var photo by remember { mutableStateOf<Uri?>(null) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        photo = uri
+        if (uri != null) photo = uri
     }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Spacer(Modifier.height(30.dp))
-        Text(if (existing == null) "Profilini oluştur" else "Profili düzenle",
-            style = MaterialTheme.typography.headlineSmall, color = FlankText, fontWeight = FontWeight.Bold)
-        Text("Diğer kullanıcılar seni bu isimle görecek.",
-            color = FlankMuted, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(24.dp))
-        ProfileAvatar(photo ?: FlankSupabase.avatarUrl(existing?.avatarPath), true)
-        TextButton(onClick = { picker.launch("image/*") }) {
-            Text("Fotoğraf seç", color = FlankBlue)
-        }
-        OutlinedTextField(
-            value = nick, onValueChange = { nick = it.take(24) },
-            label = { Text("Adın veya takma adın") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = FlankText, unfocusedTextColor = FlankText,
-                focusedContainerColor = FlankPanel, unfocusedContainerColor = FlankPanel,
-                focusedLabelColor = FlankBlue, unfocusedLabelColor = FlankMuted,
-                focusedIndicatorColor = FlankBlue, unfocusedIndicatorColor = FlankMuted
+    FlankBackdrop {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            FlankHeader()
+            Spacer(Modifier.height(19.dp))
+            Text(
+                if (existing == null) "PROFİLİNİ OLUŞTUR" else "PROFİLİNİ DÜZENLE",
+                color = FlankText,
+                fontWeight = FontWeight.ExtraBold,
+                fontStyle = FontStyle.Italic,
+                fontSize = 23.sp
             )
-        )
-        Text("Nick 2–24 karakter. Profil fotoğrafı isteğe bağlı.",
-            color = FlankMuted, style = MaterialTheme.typography.bodySmall)
-        if (message.isNotBlank()) ErrorText(message)
-        Button(
-            onClick = { save(nick, photo) }, enabled = !busy && nick.trim().length in 2..24,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = FlankBlue, contentColor = FlankBg),
-            shape = RoundedCornerShape(15.dp)
-        ) { Text(if (busy) "Kaydediliyor…" else "Devam et", fontWeight = FontWeight.Bold) }
-        if (existing != null) TextButton(onClick = back) { Text("Vazgeç", color = FlankMuted) }
+            Spacer(Modifier.height(18.dp))
+            ProfileAvatar(photo ?: FlankSupabase.avatarUrl(existing?.avatarPath), true)
+            TextButton(onClick = { picker.launch("image/*") }) {
+                Text(
+                    if (photo == null && existing?.avatarPath == null) "Fotoğraf ekle" else "Fotoğrafı değiştir",
+                    color = FlankOrange, fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(15.dp))
+            OutlinedTextField(
+                value = nick, onValueChange = { nick = it.take(24) },
+                label = { Text("Adın veya takma adın") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(17.dp),
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = FlankText,
+                    unfocusedTextColor = FlankText,
+                    focusedContainerColor = FlankPanel,
+                    unfocusedContainerColor = FlankPanel,
+                    focusedLabelColor = FlankOrange,
+                    unfocusedLabelColor = FlankMuted,
+                    focusedIndicatorColor = FlankOrange,
+                    unfocusedIndicatorColor = FlankMuted
+                )
+            )
+            if (message.isNotBlank()) ErrorText(message)
+            Spacer(Modifier.height(18.dp))
+            SolidOrangeButton(
+                text = if (busy) "Kaydediliyor…" else "DEVAM ET",
+                onClick = { save(nick, photo) },
+                enabled = !busy && nick.trim().length in 2..24,
+                leading = "➜"
+            )
+            if (existing != null) {
+                TextButton(onClick = back) { Text("Vazgeç", color = FlankMuted) }
+            }
+        }
     }
 }
 
@@ -375,73 +634,141 @@ private fun HomeScreen(
     val status by SessionState.status.collectAsState()
     val error by SessionState.error.collectAsState()
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Spacer(Modifier.height(10.dp))
-        Text("FLANK  INTERKOM", color = FlankBlue, style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black)
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(FlankPanel).padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+    FlankBackdrop {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            ProfileAvatar(FlankSupabase.avatarUrl(profile?.avatarPath))
-            Column(Modifier.weight(1f)) {
-                Text(profile?.nickname.orEmpty(), color = FlankText, fontWeight = FontWeight.SemiBold)
-                Text("Profilin hazır", color = FlankMuted, style = MaterialTheme.typography.bodySmall)
+            FlankHeader()
+
+            val cardShape = RoundedCornerShape(24.dp)
+            Row(
+                Modifier.fillMaxWidth().clip(cardShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF25282C), Color(0xFF161B20))
+                        )
+                    )
+                    .border(1.dp, FlankOrange.copy(alpha = .5f), cardShape)
+                    .padding(horizontal = 15.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ProfileAvatar(FlankSupabase.avatarUrl(profile?.avatarPath))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        profile?.nickname.orEmpty(),
+                        color = FlankText,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 21.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text("Profilin hazır", color = FlankMuted, fontSize = 13.sp)
+                }
+                TextButton(
+                    onClick = onEdit, enabled = !live,
+                    modifier = Modifier.border(
+                        1.dp, FlankOrange.copy(alpha = .7f), RoundedCornerShape(16.dp)
+                    )
+                ) { Text("✎  Düzenle", color = FlankOrange, fontSize = 12.sp) }
             }
-            TextButton(onClick = onEdit, enabled = !live) { Text("Düzenle", color = FlankBlue) }
-        }
-        if (live) {
-            Text("Canlı konuşma", color = FlankText, style = MaterialTheme.typography.headlineSmall)
-            Text("Oda kodu: $code", color = FlankBlue, style = MaterialTheme.typography.titleLarge)
-            Text("Katılımcılar: $count / 16", color = FlankText)
-            Text("Durum: $status", color = FlankMuted)
-            Button(
-                onClick = onMute, modifier = Modifier.fillMaxWidth().height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = FlankBlue, contentColor = FlankBg)
-            ) { Text(if (mic) "Mikrofonu kapat" else "Mikrofonu aç") }
-            OutlinedButton(onClick = onLeave, modifier = Modifier.fillMaxWidth()) {
-                Text("Odadan ayrıl", color = FlankText)
-            }
-        } else {
-            Spacer(Modifier.height(10.dp))
-            Text("Arkadaşlarınla bağlantıya geç.", color = FlankText,
-                style = MaterialTheme.typography.titleLarge)
-            Button(
-                onClick = { onJoin(true, "") },
-                modifier = Modifier.fillMaxWidth().height(58.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = FlankBlue, contentColor = FlankBg),
-                shape = RoundedCornerShape(16.dp)
-            ) { Text("Yeni oda oluştur", fontWeight = FontWeight.Bold) }
-            OutlinedTextField(
-                value = codeInput,
-                onValueChange = { codeInput = it.filter(Char::isDigit).take(6) },
-                label = { Text("6 haneli oda kodu") }, singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = TextFieldDefaults.colors(
-                    focusedTextColor = FlankText, unfocusedTextColor = FlankText,
-                    focusedContainerColor = FlankPanel, unfocusedContainerColor = FlankPanel,
-                    focusedLabelColor = FlankBlue, unfocusedLabelColor = FlankMuted
+
+            Spacer(Modifier.height(7.dp))
+
+            if (live) {
+                Text(
+                    "CANLI\nKONUŞMA",
+                    color = FlankOrange,
+                    fontSize = 29.sp,
+                    lineHeight = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    fontStyle = FontStyle.Italic
                 )
-            )
-            OutlinedButton(onClick = { onJoin(false, codeInput) }, modifier = Modifier.fillMaxWidth(),
-                enabled = codeInput.length == 6) {
-                Text("Odaya katıl", color = FlankText)
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(21.dp))
+                        .background(FlankPanel).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("ODA KODU", color = FlankMuted, fontSize = 12.sp)
+                    Text(code, color = FlankText, fontSize = 36.sp, fontWeight = FontWeight.Black)
+                    Text("Bağlı kişi: $count / 16", color = FlankTeal)
+                    Text("Durum: $status", color = FlankMuted, fontSize = 13.sp)
+                }
+                SolidOrangeButton(
+                    text = if (mic) "MİKROFONU KAPAT" else "MİKROFONU AÇ",
+                    onClick = onMute,
+                    leading = if (mic) "◉" else "⊘"
+                )
+                TealOutlineButton("ODADAN AYRIL", onClick = onLeave)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("»", color = FlankOrange, fontSize = 39.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "ARKADAŞLARINLA",
+                            color = FlankText,
+                            fontSize = 25.sp,
+                            lineHeight = 29.sp,
+                            fontWeight = FontWeight.Black,
+                            fontStyle = FontStyle.Italic
+                        )
+                        Text(
+                            "BAĞLANTIYA GEÇ.",
+                            color = FlankOrange,
+                            fontSize = 26.sp,
+                            lineHeight = 30.sp,
+                            fontWeight = FontWeight.Black,
+                            fontStyle = FontStyle.Italic
+                        )
+                    }
+                }
+                Spacer(Modifier.height(7.dp))
+                SolidOrangeButton(
+                    text = "YENİ ODA OLUŞTUR",
+                    onClick = { onJoin(true, "") }
+                )
+                Spacer(Modifier.height(2.dp))
+                OutlinedTextField(
+                    value = codeInput,
+                    onValueChange = { codeInput = it.filter(Char::isDigit).take(6) },
+                    placeholder = { Text("6 haneli oda kodu", color = FlankMuted) },
+                    prefix = { Text("#", color = FlankTeal, fontSize = 23.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().height(66.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedTextColor = FlankText,
+                        unfocusedTextColor = FlankText,
+                        focusedContainerColor = FlankPanel,
+                        unfocusedContainerColor = FlankPanel,
+                        focusedIndicatorColor = FlankTeal,
+                        unfocusedIndicatorColor = FlankTeal.copy(alpha = .65f),
+                        cursorColor = FlankTeal
+                    )
+                )
+                TealOutlineButton(
+                    text = "ODAYA KATIL",
+                    onClick = { onJoin(false, codeInput) },
+                    enabled = codeInput.length == 6
+                )
             }
-            Text("Kulaklık gerekmez. Telefon mikrofonu ve hoparlörüyle konuşabilirsin.",
-                color = FlankMuted, style = MaterialTheme.typography.bodySmall)
+
+            if (message.isNotBlank()) ErrorText(message)
+            if (error.isNotBlank()) ErrorText(error)
+            Spacer(Modifier.height(22.dp))
         }
-        if (message.isNotBlank()) ErrorText(message)
-        if (error.isNotBlank()) ErrorText(error)
-        Text("Test sürümü • Sürüş sırasında ekrana dokunma.",
-            color = FlankMuted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
 private fun ErrorText(message: String) {
-    Text(message, color = Color(0xFFFF938E), style = MaterialTheme.typography.bodySmall)
+    Text(
+        message,
+        color = Color(0xFFFF9690),
+        style = MaterialTheme.typography.bodySmall
+    )
 }
