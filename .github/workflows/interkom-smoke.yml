@@ -1,7 +1,7 @@
 name: Interkom Launch Smoke Test
 on:
   push:
-    branches: [interkom-v01-first-apk, interkom-v02-livekit-cloud, flank-build3-auth-profile]
+    branches: [interkom-v01-first-apk, interkom-v02-livekit-cloud, flank-build3-auth-profile, flank-build3-google-redirect-fix]
     paths:
       - "interkom/**"
       - ".github/workflows/interkom-smoke.yml"
