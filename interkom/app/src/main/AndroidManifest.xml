@@ -8,11 +8,17 @@
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
- <application android:label="Interkom" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
-  <activity android:name=".MainActivity" android:exported="true">
+ <application android:label="Flank Interkom" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
    <intent-filter>
     <action android:name="android.intent.action.MAIN"/>
     <category android:name="android.intent.category.LAUNCHER"/>
+   </intent-filter>
+   <intent-filter>
+    <action android:name="android.intent.action.VIEW"/>
+    <category android:name="android.intent.category.DEFAULT"/>
+    <category android:name="android.intent.category.BROWSABLE"/>
+    <data android:scheme="flankinterkom" android:host="auth-callback"/>
    </intent-filter>
   </activity>
   <service android:name=".InterkomService" android:exported="false" android:foregroundServiceType="microphone"/>
